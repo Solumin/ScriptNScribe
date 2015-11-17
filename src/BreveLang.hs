@@ -1,4 +1,11 @@
-module BreveLang (Expr, Statement, breveParser, pitchClasses, durations)
+module BreveLang
+    (
+      Expr (..)
+    , Statement (..)
+    , breveParser
+    , pitchClasses
+    , durations
+    ) where
 {-
 Breve:
 pitchclass ::= A | B ...
@@ -46,7 +53,7 @@ data Expr = PitchClass E.PitchClass
           | Rest Expr           -- Duration
           | Snippet [Expr]      -- Note | Rest
           | Var String
-          | List [Expr]         -- Homogeneous
+          -- | List [Expr]         -- Homogeneous
           deriving (Show, Eq)
 data Statement = String := Expr | Seq [Statement] deriving (Show, Eq)
 
@@ -89,7 +96,10 @@ breveParser :: Parser Statement
 breveParser = b_whitespace >> fmap Seq (b_semiSep1 parseStatement) <* eof
 
 parseStatement :: Parser Statement
-parseStatement = try parseAssign
+parseStatement = try parseAssign <|>
+    do
+    e <- parseExpr
+    return ("ans" := e)
 
 parseAssign :: Parser Statement
 parseAssign = do
@@ -118,7 +128,8 @@ parseRest :: Parser Expr
 parseRest = Rest <$> b_parens (b_reserved "rest" *> parseDuration)
 
 parseSnippet :: Parser Expr
-parseSnippet = Snippet <$> b_braces (b_commaSep (try parseNote <|> try parseRest))
+parseSnippet = Snippet <$> b_braces (b_commaSep (try parseNote <|> try parseRest <?> msg))
+    where msg = "Note or Rest"
 
 parseVar :: Parser Expr
 parseVar = Var <$> b_identifier
