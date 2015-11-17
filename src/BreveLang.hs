@@ -1,0 +1,162 @@
+module BreveLang (Expr, Statement, breveParser, pitchClasses, durations)
+{-
+Breve:
+pitchclass ::= A | B ...
+duration ::= qn | wn ...
+octave ::= digit { digit }*
+note ::= ( pitchclass octave duration )
+rest ::= ( "rest" duration )
+snippet ::= '{' note {, rest }* '}'
+var ::= letter { letter | digit }*
+list = [ pitchclass | duration | octave | note | rest | snippet | var ]
+
+expr ::= note | rest | list | snippet | expr duop expr
+statement ::= var := expr | var := snippet | statement {; statement}*
+
+lineComment ::= --
+blockComment ::= {- ... -}
+
+Example program:
+snippet1 = [(d 4 qn), (fs 4 qn), (a 4 qn)];
+snippet2 = [(d 4 wn)] :=: [(fs 4 wn)] :=: [(a 4 wn)]
+main = snippet1 :+: [(r qn)] :+: snippet
+
+I'm thinking :+: and :=: will be built-in functions, actually, not operators
+
+Output:
+(music) D major arpeggio in quarter notes, a beat of rest, D major chord
+(score)
+    (main) Treble cleff, with 3 quarter notes stacked: D F# A
+    (snippet 1) Treble cleff, with 3...
+-}
+import qualified Euterpea.Music.Note.Music as E
+import Text.Parsec
+import Text.Parsec.Language (emptyDef)
+import Text.Parsec.String (Parser)
+import Text.Parsec.Token
+
+-- data PitchClass = PitchClass E.PitchClass deriving (Show, Eq)
+-- data Octave = Octave E.Octave deriving (Show, Eq)
+-- data Duration = Duration E.Dur deriving (Show, Eq)
+
+data Expr = PitchClass E.PitchClass
+          | Octave E.Octave
+          | Duration E.Dur
+          | Note Expr Expr Expr -- PitchClass, Octave, Duration
+          | Rest Expr           -- Duration
+          | Snippet [Expr]      -- Note | Rest
+          | Var String
+          | List [Expr]         -- Homogeneous
+          deriving (Show, Eq)
+data Statement = String := Expr | Seq [Statement] deriving (Show, Eq)
+
+pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
+durations = ["bn","wn","hn","qn","en","sn","sfn","tn","dwn","dhn","dqn","den",
+    "dsn","dtn", "ddhn","ddqn","dden"]
+
+breveDef :: LanguageDef st
+breveDef = emptyDef { commentStart = "{-"
+                    , commentEnd = "-}"
+                    , nestedComments = True
+                    , commentLine = "--"
+                    , identStart = lower <|> char '_'
+                    , identLetter = alphaNum <|> char '_' <|> char '-'
+                    , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
+                    , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
+                    , reservedNames = pitchClasses ++ durations ++ ["rest"]
+                    , reservedOpNames = [":=", ":=:", ":+:"]
+                    , caseSensitive = True
+                    }
+
+-- extract the parsers we need
+TokenParser { identifier = b_identifier
+            , reserved = b_reserved -- maybe separator into own parsers, natch?
+            , operator = b_op
+            , reservedOp = b_resop
+            , stringLiteral = b_stringLit
+            , integer = b_int
+            , natural = b_natural
+            , symbol = b_symbol
+            , lexeme = b_lexeme -- perhaps using this instead of reserved.
+            , parens = b_parens
+            , braces = b_braces
+            , brackets = b_brackets
+            , semiSep1 = b_semiSep1
+            , commaSep = b_commaSep
+            , whiteSpace = b_whitespace } = makeTokenParser breveDef
+
+breveParser :: Parser Statement
+breveParser = b_whitespace >> fmap Seq (b_semiSep1 parseStatement) <* eof
+
+parseStatement :: Parser Statement
+parseStatement = try parseAssign
+
+parseAssign :: Parser Statement
+parseAssign = do
+    v <- b_identifier
+    b_resop ":="
+    e <- parseExpr
+    return (v := e)
+
+parseExpr :: Parser Expr
+parseExpr = try parseNote
+        <|> try parseRest
+        <|> parseSnippet
+        <|> parsePitchClass
+        <|> parseOctave
+        <|> parseDuration
+        <|> parseVar
+
+parseNote :: Parser Expr
+parseNote = b_parens (do
+    pc <- parsePitchClass
+    o <- parseOctave
+    dur <- parseDuration
+    return (Note pc o dur))
+
+parseRest :: Parser Expr
+parseRest = Rest <$> b_parens (b_reserved "rest" *> parseDuration)
+
+parseSnippet :: Parser Expr
+parseSnippet = Snippet <$> b_braces (b_commaSep (try parseNote <|> try parseRest))
+
+parseVar :: Parser Expr
+parseVar = Var <$> b_identifier
+
+-- parsePitchClass :: Parser PitchClass
+parsePitchClass :: Parser Expr
+parsePitchClass = fmap (PitchClass . read) parser
+    where
+        parser = choice (map (try . b_symbol) pitchClasses) <?> msg
+        msg = "capitol letter A-G, possibly followed by ff, f, s or ss"
+
+-- parseOctave :: Parser Octave
+parseOctave :: Parser Expr
+parseOctave = fmap (Octave . fromInteger) parser
+    where parser = b_natural <?> "natural number (0 - 8, most likely)"
+
+-- parseDuration :: Parser Duration
+parseDuration :: Parser Expr
+parseDuration = fmap (Duration . strToDur) parser
+    where parser = choice (map (try . b_symbol) durations) <?> msg
+          msg = "duration (e.g. qn)"
+
+strToDur :: String -> E.Dur
+strToDur s = case s of
+    "bn"   -> E.bn
+    "wn"   -> E.wn
+    "hn"   -> E.hn
+    "qn"   -> E.qn
+    "en"   -> E.en
+    "sn"   -> E.sn
+    "sfn"  -> E.sfn
+    "tn"   -> E.tn
+    "dwn"  -> E.dwn
+    "dhn"  -> E.dhn
+    "dqn"  -> E.dqn
+    "den"  -> E.den
+    "dsn"  -> E.dsn
+    "dtn"  -> E.dtn
+    "ddhn" -> E.ddhn
+    "ddqn" -> E.ddqn
+    "dden" -> E.dden
