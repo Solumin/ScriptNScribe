@@ -42,13 +42,11 @@ import Text.Parsec.Language (emptyDef)
 import Text.Parsec.String (Parser)
 import Text.Parsec.Token
 
--- data PitchClass = PitchClass E.PitchClass deriving (Show, Eq)
--- data Octave = Octave E.Octave deriving (Show, Eq)
--- data Duration = Duration E.Dur deriving (Show, Eq)
+data Trace = Dummy | Souce (Int, Int)
 
-data Expr = PitchClass E.PitchClass
-          | Octave E.Octave
-          | Duration E.Dur
+data Expr = PitchClass E.PitchClass Trace
+          | Octave E.Octave Trace
+          | Duration E.Dur Trace
           | Note Expr Expr Expr -- PitchClass, Octave, Duration
           | Rest Expr           -- Duration
           | Snippet [Expr]      -- Note | Rest
