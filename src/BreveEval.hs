@@ -15,8 +15,8 @@ parseEval input = case runParser breveParser [] "input" input of
 
 run :: (Statement, Traces) -> IO()
 run (s, t) = case lookup "main" (eval [] s) of
-    Just m ->  putStrLn (show m) >> E.play m
-    Nothing -> putStrLn (show s ++ show t)
+    Just m ->  putStrLn (show m) >> putStrLn (show t) >> E.play m
+    Nothing -> putStrLn (show s) >> putStrLn (show t)
 
 eval :: Env -> Statement -> Env
 eval env (Seq ss) = foldl (evalStatement) env ss
