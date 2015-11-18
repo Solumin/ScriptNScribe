@@ -41,7 +41,6 @@ Output:
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec
 import Text.Parsec.Language (emptyDef)
--- import Text.Parsec.String (Parser)
 import Text.Parsec.Token
 
 -- Poor man's map
@@ -156,7 +155,7 @@ parseVar :: Parser Expr
 parseVar = Var <$> b_identifier
 
 parsePitchClass :: Parser Expr
--- parsePitchClass = fmap (PitchClass . read) parser <* modifyState ((:)
+-- parsePitchClass = fmap (PitchClass . read) parser
 parsePitchClass = do
     pc <- parser
     let pcc = PitchClass (read pc)
