@@ -1,6 +1,7 @@
-module BreveEval 
-    ( parseEval
-    , parseEvalEnv
+module BreveEval
+    ( run
+    , runEnv
+    , interp
     ) where
 import BreveLang
 import qualified Euterpea.Music.Note.Music as E hiding (Note)
@@ -12,18 +13,26 @@ type Music = E.Music E.Pitch
 type Binding = (String, Music)
 type Env = [Binding]
 
-parseEval :: String -> IO()
-parseEval inp = parseEvalEnv inp []
-
-parseEvalEnv :: String -> Traces -> IO()
-parseEvalEnv input env = case runParser breveParser env "input" input of
+-- Take a program and produce the AST and traces
+interp :: String -> (Statement, Traces)
+interp input = case runParser breveParser [] "input" input of
     Left err -> error (show err)
-    Right statement -> run statement
+    Right st -> st
 
-run :: (Statement, Traces) -> IO()
-run (s, t) = case lookup "main" (eval [] s) of
-    Just m ->  putStrLn (show m) >> putStrLn (show t) >> E.play m
-    Nothing -> putStrLn (show s) >> putStrLn (show t)
+-- Take a program and perform it
+run :: String -> IO ()
+run s = runEnv s []
+
+runEnv :: String -> Env -> IO ()
+runEnv input env = let (prog,_) = interp input in
+    case lookup "main" (eval env prog) of
+        Just m ->  E.play m
+        Nothing -> putStrLn "<No main>"
+
+-- run :: Statement -> Env -> IO()
+-- run s env = case lookup "main" (eval env s) of
+--     Just m ->  putStrLn (show m) >> putStrLn (show t) >> E.play m
+--     Nothing -> putStrLn (show s) >> putStrLn (show t)
 
 eval :: Env -> Statement -> Env
 eval env (Seq ss) = foldl (evalStatement) env ss
