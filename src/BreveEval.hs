@@ -5,16 +5,33 @@ import Text.Parsec (parse)
 
 type Music = E.Music E.Pitch
 
-eval :: Statement -> Music
-eval (Seq (s:ss)) = evalStatement s
+type Binding = (String, Music)
+type Env = [Binding]
 
-evalStatement :: Statement -> Music
-evalStatement (v := e) = evalExpr e
+parseEval :: String -> IO()
+parseEval input = case parse breveParser "input" input of
+    Left err -> error (show err)
+    Right statement -> run statement
 
-evalExpr :: Expr -> Music
-evalExpr n@(Note _ _ _) = evalNote n
-evalExpr r@(Rest _) = evalRest r
-evalExpr s@(Snippet _) = evalSnippet s
+run :: Statement -> IO()
+run s = case lookup "main" (eval [] s) of
+    Just m -> E.play m
+    Nothing -> putStrLn (show s)
+
+eval :: Env -> Statement -> Env
+eval env (Seq ss) = foldl (evalStatement) env ss
+eval env s = evalStatement env s
+
+evalStatement :: Env -> Statement -> Env
+evalStatement env (v := e) = (v, evalExpr env e) : env
+
+evalExpr :: Env -> Expr -> Music
+evalExpr env n@(Note _ _ _) = evalNote n
+evalExpr env r@(Rest _) = evalRest r
+evalExpr env s@(Snippet _) = evalSnippet s
+evalExpr env (Var v) = case lookup v env of
+    Just m -> m
+    Nothing -> error ("Unknown variable " ++ v)
 
 evalNote :: Expr -> Music
 evalNote (Note (PitchClass p) (Octave o) (Duration d)) = E.note d (p, o)
@@ -29,8 +46,3 @@ evalSnippet (Snippet ss) = E.line (map body ss)
         body n@(Note p o d) = evalNote n
         body r@(Rest d) = evalRest r
         body e = error ("Snippet can only contain Notes and Rests, received " ++ (show e))
-
-parseEval :: String -> IO()
-parseEval input = case parse breveParser "input" input of
-    Left err -> error (show err)
-    Right statement -> E.play (eval statement)
