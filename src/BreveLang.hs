@@ -1,13 +1,14 @@
 module BreveLang
-    (
-      Expr (..)
-    , Statement (..)
-    , Trace
-    , Traces
-    , breveParser
-    , pitchClasses
-    , durations
-    ) where
+    where
+    -- (
+    --   Expr (..)
+    -- , Statement (..)
+    -- , Trace
+    -- , Traces
+    -- , breveParser
+    -- , pitchClasses
+    -- , durations
+    -- ) where
 {-
 Breve:
 pitchclass ::= A | B ...
@@ -102,7 +103,7 @@ TokenParser { identifier = b_identifier
 b_semiSep1 p = sepEndBy p b_semi
 
 breveParser :: Parser (Statement, Traces)
-breveParser = do 
+breveParser = do
     p <- b_whitespace >> fmap Seq (b_semiSep1 parseStatement) <* eof
     s <- getState
     return (p, s)
