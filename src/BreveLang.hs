@@ -2,6 +2,8 @@ module BreveLang
     (
       Expr (..)
     , Statement (..)
+    , Trace
+    , Traces
     , breveParser
     , pitchClasses
     , durations
@@ -39,12 +41,14 @@ Output:
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec
 import Text.Parsec.Language (emptyDef)
-import Text.Parsec.String (Parser)
+-- import Text.Parsec.String (Parser)
 import Text.Parsec.Token
 
 -- Poor man's map
 type Trace = (Expr, (Int, Int))
 type Traces = [Trace]
+
+type Parser = Parsec String Traces
 
 data Expr = PitchClass E.PitchClass
           | Octave E.Octave
@@ -98,8 +102,11 @@ TokenParser { identifier = b_identifier
 -- sense. (It optionally eats the last separator)
 b_semiSep1 p = sepEndBy p b_semi
 
-breveParser :: Parser Statement
-breveParser = b_whitespace >> fmap Seq (b_semiSep1 parseStatement) <* eof
+breveParser :: Parser (Statement, Traces)
+breveParser = do 
+    p <- b_whitespace >> fmap Seq (b_semiSep1 parseStatement) <* eof
+    s <- getState
+    return (p, s)
 
 -- ===================
 -- Parsing Statements
@@ -150,7 +157,13 @@ parseVar = Var <$> b_identifier
 
 -- parsePitchClass :: Parser PitchClass
 parsePitchClass :: Parser Expr
-parsePitchClass = fmap (PitchClass . read) parser
+-- parsePitchClass = fmap (PitchClass . read) parser <* modifyState ((:)
+parsePitchClass = do
+    pc <- parser
+    pos <- getPosition
+    let pcc = PitchClass (read pc)
+    modifyState ((:) (pcc, (sourceLine pos, sourceColumn pos)))
+    return pcc
     where
         parser = choice (map (try . b_symbol) pitchClasses) <?> msg
         msg = "capitol letter A-G, possibly followed by ff, f, s or ss"

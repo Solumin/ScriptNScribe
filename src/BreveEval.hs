@@ -1,7 +1,7 @@
 import BreveLang
 import qualified Euterpea.Music.Note.Music as E hiding (Note)
 import qualified Euterpea as E (play, line)
-import Text.Parsec (parse)
+import Text.Parsec (runParser)
 
 type Music = E.Music E.Pitch
 
@@ -9,14 +9,14 @@ type Binding = (String, Music)
 type Env = [Binding]
 
 parseEval :: String -> IO()
-parseEval input = case parse breveParser "input" input of
+parseEval input = case runParser breveParser [] "input" input of
     Left err -> error (show err)
     Right statement -> run statement
 
-run :: Statement -> IO()
-run s = case lookup "main" (eval [] s) of
+run :: (Statement, Traces) -> IO()
+run (s, t) = case lookup "main" (eval [] s) of
     Just m ->  putStrLn (show m) >> E.play m
-    Nothing -> putStrLn (show s)
+    Nothing -> putStrLn (show s ++ show t)
 
 eval :: Env -> Statement -> Env
 eval env (Seq ss) = foldl (evalStatement) env ss
