@@ -45,14 +45,14 @@ import Text.Parsec.Language (emptyDef)
 import Text.Parsec.Token
 
 -- Poor man's map
-type Trace = (Expr, (Int, Int))
-type Traces = [Trace]
+type Loc = (Int, Int)
+type Traces = [Expr]
 
 type Parser = Parsec String Traces
 
-data Expr = PitchClass E.PitchClass
-          | Octave E.Octave
-          | Duration E.Dur
+data Expr = PitchClass E.PitchClass Loc
+          | Octave E.Octave Loc
+          | Duration E.Dur Loc
           | Note Expr Expr Expr -- PitchClass, Octave, Duration
           | Rest Expr           -- Duration
           | Snippet [Expr]      -- Note | Rest
@@ -159,7 +159,8 @@ parsePitchClass :: Parser Expr
 -- parsePitchClass = fmap (PitchClass . read) parser
 parsePitchClass = do
     pc <- parser
-    let pcc = PitchClass (read pc)
+    loc <- getLoc
+    let pcc = PitchClass (read pc) loc
     addState(pcc)
     return pcc
     where
@@ -170,7 +171,8 @@ parseOctave :: Parser Expr
 -- parseOctave = fmap (Octave . fromInteger) parser
 parseOctave = do
     o <- parser
-    let oct = Octave (fromInteger o)
+    loc <- getLoc
+    let oct = Octave (fromInteger o) loc
     addState(oct)
     return oct
     where parser = b_natural <?> "natural number (0 - 8, most likely)"
@@ -179,7 +181,8 @@ parseDuration :: Parser Expr
 -- parseDuration = fmap (Duration . strToDur) parser
 parseDuration = do
     d <- parser
-    let dur = Duration (strToDur d)
+    loc <- getLoc
+    let dur = Duration (strToDur d) loc
     addState(dur)
     return dur
     where parser = choice (map (try . b_symbol) durations) <?> msg
@@ -208,8 +211,14 @@ strToDur s = case s of
 -- ============
 -- Utility
 -- ============
-addState :: Expr -> Parser ()
-addState e = do
+getLoc :: Parser ((Int,Int))
+getLoc = do
     pos <- getPosition
-    modifyState ((:) (e, (sourceLine pos, sourceColumn pos)))
+    let loc = (sourceLine pos, sourceColumn pos)
+    -- modifyState ((:) (e, loc)
+    return loc
+
+addState :: Expr -> Parser ()
+addState s = do
+    modifyState ((:) s)
     return ()
