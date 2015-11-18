@@ -50,10 +50,10 @@ evalExpr env (Var v) = case lookup v env of
     Nothing -> error ("Unknown variable " ++ v)
 
 evalNote :: Expr -> Music
-evalNote (Note (PitchClass p) (Octave o) (Duration d)) = E.note d (p, o)
+evalNote (Note (PitchClass p _) (Octave o _) (Duration d _)) = E.note d (p, o)
 
 evalRest :: Expr -> Music
-evalRest (Rest (Duration d)) = E.rest d
+evalRest (Rest (Duration d _)) = E.rest d
 
 evalSnippet :: Expr -> Music
 evalSnippet (Snippet ss) = E.line (map body ss)
