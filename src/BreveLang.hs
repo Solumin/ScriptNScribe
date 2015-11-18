@@ -155,27 +155,33 @@ parseSnippet = Snippet <$> b_braces (b_commaSep (try parseNote <|> try parseRest
 parseVar :: Parser Expr
 parseVar = Var <$> b_identifier
 
--- parsePitchClass :: Parser PitchClass
 parsePitchClass :: Parser Expr
 -- parsePitchClass = fmap (PitchClass . read) parser <* modifyState ((:)
 parsePitchClass = do
     pc <- parser
-    pos <- getPosition
     let pcc = PitchClass (read pc)
-    modifyState ((:) (pcc, (sourceLine pos, sourceColumn pos)))
+    addState(pcc)
     return pcc
     where
         parser = choice (map (try . b_symbol) pitchClasses) <?> msg
         msg = "capitol letter A-G, possibly followed by ff, f, s or ss"
 
--- parseOctave :: Parser Octave
 parseOctave :: Parser Expr
-parseOctave = fmap (Octave . fromInteger) parser
+-- parseOctave = fmap (Octave . fromInteger) parser
+parseOctave = do
+    o <- parser
+    let oct = Octave (fromInteger o)
+    addState(oct)
+    return oct
     where parser = b_natural <?> "natural number (0 - 8, most likely)"
 
--- parseDuration :: Parser Duration
 parseDuration :: Parser Expr
-parseDuration = fmap (Duration . strToDur) parser
+-- parseDuration = fmap (Duration . strToDur) parser
+parseDuration = do
+    d <- parser
+    let dur = Duration (strToDur d)
+    addState(dur)
+    return dur
     where parser = choice (map (try . b_symbol) durations) <?> msg
           msg = "duration (e.g. qn)"
 
@@ -198,3 +204,12 @@ strToDur s = case s of
     "ddhn" -> E.ddhn
     "ddqn" -> E.ddqn
     "dden" -> E.dden
+
+-- ============
+-- Utility
+-- ============
+addState :: Expr -> Parser ()
+addState e = do
+    pos <- getPosition
+    modifyState ((:) (e, (sourceLine pos, sourceColumn pos)))
+    return ()
