@@ -42,11 +42,13 @@ import Text.Parsec.Language (emptyDef)
 import Text.Parsec.String (Parser)
 import Text.Parsec.Token
 
-data Trace = Dummy | Souce (Int, Int)
+-- Poor man's map
+type Trace = (Expr, (Int, Int))
+type Traces = [Trace]
 
-data Expr = PitchClass E.PitchClass Trace
-          | Octave E.Octave Trace
-          | Duration E.Dur Trace
+data Expr = PitchClass E.PitchClass
+          | Octave E.Octave
+          | Duration E.Dur
           | Note Expr Expr Expr -- PitchClass, Octave, Duration
           | Rest Expr           -- Duration
           | Snippet [Expr]      -- Note | Rest
@@ -99,6 +101,10 @@ b_semiSep1 p = sepEndBy p b_semi
 breveParser :: Parser Statement
 breveParser = b_whitespace >> fmap Seq (b_semiSep1 parseStatement) <* eof
 
+-- ===================
+-- Parsing Statements
+-- ===================
+
 parseStatement :: Parser Statement
 parseStatement = try parseAssign <|>
     do
@@ -111,6 +117,10 @@ parseAssign = do
     b_resop ":="
     e <- parseExpr
     return (v := e)
+
+-- ===================
+-- Parsing Expressions
+-- ===================
 
 parseExpr :: Parser Expr
 parseExpr = try parseNote
