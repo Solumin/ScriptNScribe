@@ -88,9 +88,15 @@ TokenParser { identifier = b_identifier
             , parens = b_parens
             , braces = b_braces
             , brackets = b_brackets
-            , semiSep1 = b_semiSep1
+            , semi = b_semi
+            -- , semiSep1 = b_semiSep1
             , commaSep = b_commaSep
             , whiteSpace = b_whitespace } = makeTokenParser breveDef
+-- The default semiSep1 uses sepBy, which expects something like "a, b, c".
+-- That's fine for lists, but we're processing semicolon-terminated statements.
+-- We expect the last statement to have a semicolon! So sepEndBy makes more
+-- sense. (It optionally eats the last separator)
+b_semiSep1 p = sepEndBy p b_semi
 
 breveParser :: Parser Statement
 breveParser = b_whitespace >> fmap Seq (b_semiSep1 parseStatement) <* eof
