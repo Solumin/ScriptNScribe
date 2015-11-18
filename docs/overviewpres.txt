@@ -1,0 +1,23 @@
+Presentation: (5 minutes -- 5 slides or so!)
+
+Background:
+    - Prodirect Manipulation (talk about SVGs a little bit)
+        - Bridging the gap between programmatic and direct manipulation!
+Music Representations
+    - Graphically: Finale, Sebelius, Rosegarden (?)
+        - Virtual score, skeuemorphism of physically writing music
+    - Programs: e.g. CSound or Music-V family
+Audio DSLs
+    - Quite a number of them!
+    - Mostly decedents of MUSIC-N, a family of audio DSLs created in 1957
+        - Most popular is CSound, in that it actually is updated
+Motivation:
+    - How well can prodirect manipulation be adapted to music?
+    - The virtual score is equiv to parts of image
+    - Update CSound program in real time
+    - Advantages of interoperability are pretty obvious!
+    - CSound has wide capabilities, will probably limit research to only score
+      <-> program for now, not worrying about synths.
+Challenges:
+    - Obviously not a 1-1 mapping
+    - CSound not functional, unlike little

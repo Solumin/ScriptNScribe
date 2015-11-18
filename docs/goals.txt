@@ -1,0 +1,78 @@
+Goals, or, What Things I Need To Have
+
+UI, which is going to be similar to S&S:
+- Programmatic: Code panel on left
+- Direct: Score and snippets on right
+- Controls for editing code, playing example, ???
+- Stretch:
+    - Syntax Highlighting for code
+    - Hover highlighting to show relationships between score and code
+
+Synthesis:
+- Live may be easiest to do first, instead of adhoc
+-
+
+DSL:
+
+What's the possibility of getting this up on the web? Depending on Euterpea
+makes it a little weird, and I have no idea how to do music generation with JS.
+
+Demo Goal:
+1. Create a snippet, write some notes
+2. Run synthesis to generate a basic program
+3. Edit those notes.
+4. Re-synthesize to produce new program.
+
+1. Define arpeggio :: [Steps] -> Base Note -> [Notes]
+2. Define triad = arpeggio [root, third, fifth]
+3. Call arpeggio twice (two input snippets) to produce output
+4. Change base notes in snippets
+5. Synthesize.
+
+Minimum Requirements:
+- Trace-based synthesis
+    - DSL, parsing with positions
+- Output notes
+- Defining data structure (may just do 'raw input' by building snippets?)
+    snippet1 = (qn G4)
+    snippet2 = (qn Fs4)
+    synthesize [snippet1, snippet2]
+Stretch:
+- Score output
+- WAV output
+- UI
+
+breve, a little music DSL
+- base values: pitch classes, durations, numbers, booleans, lists (con-cells?)
+- Note: [pitch, duration]
+- Pitch: [pitch class, octave]
+- Rest: [duration]
+- Functions, lets?
+- Snippet: [Note | Rest] | Snippet :+: Snippet
+    really Snippet :: Music a, but...
+
+Presentation:
+Current Progress:
+- Limited DSL (breve 0.1)
+    - Pitch Class and Durations are basic values
+    - Currently focused entirely on music, so no integers, lists, functions, etc.
+    - Based around idea of "Snippets"
+    - "main" is important (like Haskell)
+- Basic Synthesis (really basic traces)
+- No real UI
+What's Left:
+- Full DSL (breve 1.0)
+    - User defined functions and operators, lists, Prelude
+    - Multiple source files?
+- Trace-based Synthesis
+    - Both ad-hoc AND live modes
+    - Full traces, including user actions (for creating new snippets and notes)
+        - Currently difficult since user updates are expected to map new values
+          to location in old program.
+    - Idea ^^ is to make trace-based proactive instead of reactive
+- Full UI
+    - Edit code in one window, see result in another
+- Stretch Goals:
+    - Arbitrary musical changes, e.g. choosing instruments, dynamics, tempo
+    - Syntax Highlighting
+    - Possibility of web app? (VexFlow(?), JS Midi...?)

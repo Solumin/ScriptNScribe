@@ -1,0 +1,43 @@
+breve, a little music DSL
+- base values: pitch classes, durations, numbers, booleans, lists (con-cells?)
+- Note: [pitch, duration]
+- Pitch: [pitch class, octave]
+    Or Note: [pitch class, octave, duration]
+- Rest: [duration]
+- Snippet: [Note | Rest] | Snippet :+: Snippet
+    really Snippet :: Music a, but...
+- Functions, lets?
+
+Traces:
+- Source code locations: inserted by parser, refer to source code location in
+  AST. But they actually use line+column? -> All numeric literals.
+- Expression traces: Combine traces when *evaling* basic ops to form operations.
+
+Instead of numeric literals, I need to trace... what? everything, basically?
+Snippets, notes, durations... and numeric literals?
+
+Take arpeggio example:
+arpeggio :: [Int] -> Music Pitch -> Music Pitch;
+arpeggio steps (Prim (Note d p)) = line (map (\s -> Prim(Note d (trans s p))) steps)
+-- usage: arpeggio [0, 4, 7] (d 4 qn) == (d 4 qn) :+: (fs 4 qn) :+: (a 4 qn)
+There's 4 literals in the usage: 0, 4, 7 and (d 4 qn). Notes need to be
+first-class "literals" by themselves. In direct manipulation, there are no
+pitches, just notes -- pitch, duration, etc. are all combined in a single
+element.
+But, when the user changes the note, they might change only one thing. Plus,
+programmers may want to have pitch (and components) separate.
+The final score output need to be :: Music Pitch, I think.
+Slightly limits us to typical tonal Western music, but... uh... that's fine for
+now.
+
+in breve, will just have lists of notes instead of a music type.
+
+We'll call it breve 0.1, really simple, just notes as primitives.
+
+note: '(' pitchClass octave duration ')'
+pitchClass: A | B ... etc (Eut)
+octave: integer
+duration: qn | etc
+rest: '(' 'r' duration ')'
+snippet: '[' note[, note]* ']' | snippet :=: snippet | snippet :+: snippet
+main: snippet

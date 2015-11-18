@@ -1,0 +1,57 @@
+Example program:
+snippet1 = [(d 4 qn), (fs 4 qn), (a 4 qn)];
+snippet2 = [(d 4 wn)] :=: [(fs 4 wn)] :=: [(a 4 wn)];
+main = snippet1 :+: [(r qn)] :+: snippet;
+
+commentLine = "--"
+commentStart = "{-"
+commentEnd = "-}"
+nestedComments = True
+identStart = lower <|> char '_'
+identLetter = alphaNum <|> char '_' <|> char '-'
+opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
+opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
+reservedNames = ["snippet", pitchClasses, durations, "r"]
+reservedOpNames = [] -- ??
+caseSenseitive = True
+
+Breve:
+pitchclass ::= A | B ...
+duration ::= qn | wn ...
+octave ::= digit { digit }*
+note ::= ( pitchclass octave duration )
+rest ::= ( "rest" duration )
+snippet ::= '{' note {, rest }* '}'
+var ::= letter { letter | digit }*
+list = [ pitchclass | duration | octave | note | rest | snippet | var ]
+
+expr ::= note | rest | list | snippet | expr duop expr
+statement ::= var := expr | var := snippet | statement {; statement}*
+
+lineComment ::= --
+blockComment ::= {- ... -}
+
+type PitchClass = E.PitchClass
+type Octave = E.Octave
+type Duration = E.Duration
+
+data Expr = Note PitchClass Octave Duration | Rest Duration deriving Show
+data Snippet = [Expr] | Snippet :=: Snippet | Snippet :+: Snippet deriving Show
+data Statement = String := Expr | String := Snippet | Seq [Statement] deriving Show
+
+pitchclasses = [n : m | n <- ['A'..'G'], m <- ["", "f", "ff", "s", "ss"]]
+durations = ["bn","wn","hn","qn","en","sn","sfn","tn","dwn","dhn","dqn","den",
+    "dsn","dtn", "ddhn","ddqn","dden"]
+
+breveDef = emptyDef { commentStart = "{-"
+                    , commentEnd = "-}"
+                    , nestedComments = True
+                    , commentLine = "--"
+                    , identStart = lower <|> char '_'
+                    , identLetter = alphaNum <|> char '_' <|> char '-'
+                    , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
+                    , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
+                    , reservedNames = pitchClasses ++ durations ++ ["rest"]
+                    , reservedOpNames = [":=", ":=:", ":+:"]
+                    , caseSenseitive = True
+                    }

@@ -1,0 +1,24 @@
+SYNTHESIS
+
+Traces for now will just be numeric literals, will worry about operations later.
+
+Example program:
+x := {(D 4 qn), (Fs 4 qn), (A 4 qn)};
+main := x;
+
+Literals:
+D, 4, qn(0), Fs, 4, qn(1), A, 4, qn(2)
+
+Synthesis:
+Given:
+    - program (with traces)
+    - list of numeric output values that user has changed
+Find: Substitution to apply to original program so that output of new program is
+'faithful' to the user's changes.
+Algorithm: (given map locs -> consts p, trace map ni = ti, user's changes ni' = ti)
+    - Li = Locs(ti) (locations in the trace)
+    - Li' = disjoint locations (locations that are used ONLY in ti)
+    - For all the disjoint locations li, compute ki = Solve(p, li, ni' = ti)
+
+Since we have literally only constants, synthesis is literally "change those
+things". That's... a bit too simple.
