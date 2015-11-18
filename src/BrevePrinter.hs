@@ -9,7 +9,7 @@ import qualified Euterpea.Music.Note.Music as E
  -}
 
 unparse :: Statement -> String
-unparse (Seq ss) = unlines $ map unparse ss
+unparse (Seq ss) = intercalate (";\n") $ map unparse ss
 unparse (v := e) = unwords [v, ":=", unparseExpr e]
 
 unparseExpr :: Expr -> String
