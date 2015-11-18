@@ -1,3 +1,7 @@
+module BreveEval 
+    ( parseEval
+    , parseEvalEnv
+    ) where
 import BreveLang
 import qualified Euterpea.Music.Note.Music as E hiding (Note)
 import qualified Euterpea as E (play, line)
@@ -9,7 +13,10 @@ type Binding = (String, Music)
 type Env = [Binding]
 
 parseEval :: String -> IO()
-parseEval input = case runParser breveParser [] "input" input of
+parseEval inp = parseEvalEnv inp []
+
+parseEvalEnv :: String -> Traces -> IO()
+parseEvalEnv input env = case runParser breveParser env "input" input of
     Left err -> error (show err)
     Right statement -> run statement
 
