@@ -9,7 +9,12 @@ eval :: Statement -> Music
 eval (Seq (s:ss)) = evalStatement s
 
 evalStatement :: Statement -> Music
-evalStatement (v := n) = evalNote n
+evalStatement (v := e) = evalExpr e
+
+evalExpr :: Expr -> Music
+evalExpr n@(Note _ _ _) = evalNote n
+evalExpr r@(Rest _) = evalRest r
+evalExpr s@(Snippet _) = evalSnippet s
 
 evalNote :: Expr -> Music
 evalNote (Note (PitchClass p) (Octave o) (Duration d)) = E.note d (p, o)
@@ -23,8 +28,7 @@ evalSnippet (Snippet ss) = E.line (map body ss)
         body :: Expr -> Music
         body n@(Note p o d) = evalNote n
         body r@(Rest d) = evalRest r
-        body _ = error "Snippet can only contain Notes and Rests"
-
+        body e = error ("Snippet can only contain Notes and Rests, received " ++ (show e))
 
 parseEval :: String -> IO()
 parseEval input = case parse breveParser "input" input of
