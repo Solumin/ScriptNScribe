@@ -1,0 +1,2 @@
+main := {(F 4 qn), (G 4 qn), (A 4 qn), (F 4 qn), (F 4 qn), (G 4 qn), (A 4 qn), (F 4 qn),
+    (A 4 qn), (Bf 4 qn), (C 5 hn), (A 4 qn), (Bf 4 qn), (C 5 hn)}
