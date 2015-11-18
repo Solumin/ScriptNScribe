@@ -15,7 +15,7 @@ parseEval input = case parse breveParser "input" input of
 
 run :: Statement -> IO()
 run s = case lookup "main" (eval [] s) of
-    Just m -> E.play m
+    Just m ->  putStrLn (show m) >> E.play m
     Nothing -> putStrLn (show s)
 
 eval :: Env -> Statement -> Env
