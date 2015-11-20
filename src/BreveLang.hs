@@ -27,11 +27,9 @@ lineComment ::= --
 blockComment ::= {- ... -}
 
 Example program:
-snippet1 = [(d 4 qn), (fs 4 qn), (a 4 qn)];
-snippet2 = [(d 4 wn)] :=: [(fs 4 wn)] :=: [(a 4 wn)]
-main = snippet1 :+: [(r qn)] :+: snippet
-
-I'm thinking :+: and :=: will be built-in functions, actually, not operators
+snippet1 = {(d 4 qn), (fs 4 qn), (a 4 qn)};
+snippet2 = {(d 4 wn)} :=: [(fs 4 wn)] :=: [(a 4 wn)]
+main = snippet1 :+: {(r qn)} :+: snippet
 
 Output:
 (music) D major arpeggio in quarter notes, a beat of rest, D major chord
@@ -117,9 +115,6 @@ breveParser = do
 
 parseStatement :: Parser Statement
 parseStatement = try parseAssign
-    -- <|> do
-    --     e <- parseExpr
-    --     return ("ans" := e)
 
 parseAssign :: Parser Statement
 parseAssign = do
@@ -161,12 +156,12 @@ parseVar :: Parser Expr
 parseVar = Var <$> b_identifier
 
 parsePitchClass :: Parser Expr
--- parsePitchClass = fmap (PitchClass . read) parser
+-- parsePitchClass = (PitchClass <$> (read <$> parser) <*> getLoc) >>= (\e -> addState e *> return e)
 parsePitchClass = do
     pc <- parser
     loc <- getLoc
     let pcc = PitchClass (read pc) loc
-    addState(pcc)
+    addState pcc
     return pcc
     where
         parser = choice (map (try . b_symbol) pitchClasses) <?> msg
@@ -178,7 +173,7 @@ parseOctave = do
     o <- parser
     loc <- getLoc
     let oct = Octave (fromInteger o) loc
-    addState(oct)
+    addState oct
     return oct
     where parser = b_natural <?> "natural number (0 - 8, most likely)"
 
@@ -188,7 +183,7 @@ parseDuration = do
     d <- parser
     loc <- getLoc
     let dur = Duration (strToDur d) loc
-    addState(dur)
+    addState dur
     return dur
     where parser = choice (map (try . b_symbol) durations) <?> msg
           msg = "duration (e.g. qn)"
@@ -218,14 +213,14 @@ strToDur s = case s of
 -- ===========
 
 parseSnippetOp :: Parser Expr
-parseSnippetOp = (buildExpressionParser snippetTable (parseSnippet <?> "a snippet: {Note | Rest}")) <?> "snippet op"
+parseSnippetOp = buildExpressionParser snippetTable (parseSnippet <?> "a snippet: {Note | Rest}") <?> "snippet op"
 snippetTable = [[ Infix (b_resop ":=:" *> return (:=:)) AssocRight
                 , Infix (b_resop ":+:" *> return (:+:)) AssocRight ]]
 
 -- ============
 -- Utility
 -- ============
-getLoc :: Parser ((Int,Int))
+getLoc :: Parser (Int,Int)
 getLoc = do
     pos <- getPosition
     let loc = (sourceLine pos, sourceColumn pos)
