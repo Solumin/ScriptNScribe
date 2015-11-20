@@ -41,6 +41,7 @@ Output:
 -}
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec
+import Text.Parsec.Expr
 import Text.Parsec.Language (emptyDef)
 import Text.Parsec.Token
 
@@ -56,6 +57,8 @@ data Expr = PitchClass E.PitchClass Loc
           | Note Expr Expr Expr -- PitchClass, Octave, Duration
           | Rest Expr           -- Duration
           | Snippet [Expr]      -- Note | Rest
+          | Expr :=: Expr -- Snippet :=: Snippet
+          | Expr :+: Expr
           | Var String
           -- | List [Expr]         -- Homogeneous
           deriving (Show, Eq)
@@ -75,7 +78,7 @@ breveDef = emptyDef { commentStart = "{-"
                     , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , reservedNames = pitchClasses ++ durations ++ ["rest"]
-                    , reservedOpNames = [":=", ":=:", ":+:"]
+                    , reservedOpNames = ["=", ":=:", ":+:"]
                     , caseSensitive = True
                     }
 
@@ -113,15 +116,15 @@ breveParser = do
 -- ===================
 
 parseStatement :: Parser Statement
-parseStatement = try parseAssign <|>
-    do
-    e <- parseExpr
-    return ("ans" := e)
+parseStatement = try parseAssign
+    -- <|> do
+    --     e <- parseExpr
+    --     return ("ans" := e)
 
 parseAssign :: Parser Statement
 parseAssign = do
     v <- b_identifier
-    b_resop ":="
+    b_resop "="
     e <- parseExpr
     return (v := e)
 
@@ -132,11 +135,13 @@ parseAssign = do
 parseExpr :: Parser Expr
 parseExpr = try parseNote
         <|> try parseRest
+        <|> parseSnippetOp
         <|> parseSnippet
         <|> parsePitchClass
         <|> parseOctave
         <|> parseDuration
         <|> parseVar
+        <?> "an expression"
 
 parseNote :: Parser Expr
 parseNote = b_parens (do
@@ -207,6 +212,14 @@ strToDur s = case s of
     "ddhn" -> E.ddhn
     "ddqn" -> E.ddqn
     "dden" -> E.dden
+
+-- ===========
+-- Snippet Expr
+-- ===========
+
+parseSnippetOp :: Parser Expr
+parseSnippetOp = (buildExpressionParser snippetTable (parseSnippet <?> "a snippet: {Note | Rest}")) <?> "snippet op"
+snippetTable = [[ Infix (b_resop ":=:" *> return (:=:)) AssocRight ]]
 
 -- ============
 -- Utility
