@@ -219,7 +219,8 @@ strToDur s = case s of
 
 parseSnippetOp :: Parser Expr
 parseSnippetOp = (buildExpressionParser snippetTable (parseSnippet <?> "a snippet: {Note | Rest}")) <?> "snippet op"
-snippetTable = [[ Infix (b_resop ":=:" *> return (:=:)) AssocRight ]]
+snippetTable = [[ Infix (b_resop ":=:" *> return (:=:)) AssocRight
+                , Infix (b_resop ":+:" *> return (:+:)) AssocRight ]]
 
 -- ============
 -- Utility
