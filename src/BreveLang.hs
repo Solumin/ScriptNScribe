@@ -52,6 +52,8 @@ type Parser = Parsec String Traces
 data Expr = PitchClass E.PitchClass Loc
           | Octave E.Octave Loc
           | Duration E.Dur Loc
+          | N Int Loc | R Rational Loc
+          | B Bool
           | Note Expr Expr Expr -- PitchClass, Octave, Duration
           | Rest Expr           -- Duration
           | Snippet [Expr]      -- Note | Rest
@@ -65,6 +67,7 @@ data Statement = String := Expr | Seq [Statement] deriving (Show, Eq)
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
 durations = ["bn","wn","hn","qn","en","sn","sfn","tn","dwn","dhn","dqn","den",
     "dsn","dtn", "ddhn","ddqn","dden"]
+keywords = ["rest", "true", "false", "if", "else", "def"]
 
 breveDef :: LanguageDef st
 breveDef = emptyDef { commentStart = "{-"
@@ -75,8 +78,8 @@ breveDef = emptyDef { commentStart = "{-"
                     , identLetter = alphaNum <|> char '_' <|> char '-'
                     , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
-                    , reservedNames = pitchClasses ++ durations ++ ["rest"]
-                    , reservedOpNames = ["=", ":=:", ":+:"]
+                    , reservedNames = pitchClasses ++ durations ++ keywords
+                    , reservedOpNames = ["=", "+", "-", "*", "/", ":=:", ":+:"]
                     , caseSensitive = True
                     }
 
