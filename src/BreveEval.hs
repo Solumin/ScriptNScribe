@@ -45,6 +45,8 @@ evalExpr :: Env -> Expr -> Music
 evalExpr env n@(Note _ _ _) = evalNote n
 evalExpr env r@(Rest _) = evalRest r
 evalExpr env s@(Snippet _) = evalSnippet s
+evalExpr env (s1 :=: s2) = evalExpr env s1 E.:=: evalExpr env s2
+evalExpr env (s1 :+: s2) = evalExpr env s1 E.:+: evalExpr env s2
 evalExpr env (Var v) = case lookup v env of
     Just m -> m
     Nothing -> error ("Unknown variable " ++ v)
