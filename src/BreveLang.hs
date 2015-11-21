@@ -52,22 +52,35 @@ type Parser = Parsec String Traces
 data Expr = PitchClass E.PitchClass Loc
           | Octave E.Octave Loc
           | Duration E.Dur Loc
-          | N Int Loc | R Rational Loc
+          | N Integer Loc | D Double Loc
           | B Bool
+          | UnOpExpr UnOp Expr
+          | BinOpExpr BinOp Expr Expr
           | Note Expr Expr Expr -- PitchClass, Octave, Duration
           | Rest Expr           -- Duration
           | Snippet [Expr]      -- Note | Rest
-          | Expr :=: Expr -- Snippet :=: Snippet
-          | Expr :+: Expr
+          -- | Expr :=: Expr       -- Snippet :=: Snippet
+          -- | Expr :+: Expr
           | Var String
           -- | List [Expr]         -- Homogeneous
           deriving (Show, Eq)
+
+data BinOp =
+      SeqOp | ParOp                     -- snippets
+    | Add | Mult | Div | Sub            -- match
+    | Eq | Neq | Lt | Lte | Gt | Gte    -- equality
+    deriving (Show, Eq)
+data UnOp = Not deriving (Show, Eq)
+
 data Statement = String := Expr | Seq [Statement] deriving (Show, Eq)
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
 durations = ["bn","wn","hn","qn","en","sn","sfn","tn","dwn","dhn","dqn","den",
     "dsn","dtn", "ddhn","ddqn","dden"]
 keywords = ["rest", "true", "false", "if", "else", "def"]
+mathOps = ["+", "-", "/", "*"]
+boolOps = ["==", "<", "<=", ">", ">="]
+catOps = ["=", ":=:", ":+:"]
 
 breveDef :: LanguageDef st
 breveDef = emptyDef { commentStart = "{-"
@@ -79,7 +92,7 @@ breveDef = emptyDef { commentStart = "{-"
                     , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , reservedNames = pitchClasses ++ durations ++ keywords
-                    , reservedOpNames = ["=", "+", "-", "*", "/", ":=:", ":+:"]
+                    , reservedOpNames = catOps ++ mathOps ++ boolOps
                     , caseSensitive = True
                     }
 
@@ -91,6 +104,7 @@ TokenParser { identifier = b_identifier
             , stringLiteral = b_stringLit
             , integer = b_int
             , natural = b_natural
+            , naturalOrFloat = b_number
             , symbol = b_symbol
             , lexeme = b_lexeme -- perhaps using this instead of reserved.
             , parens = b_parens
@@ -133,19 +147,21 @@ parseAssign = do
 parseExpr :: Parser Expr
 parseExpr = try parseNote
         <|> try parseRest
-        <|> parseSnippetOp
+        <|> parseNum
+        <|> parseOp
         <|> parseSnippet
         <|> parsePitchClass
-        <|> parseOctave
-        <|> parseDuration
+        -- <|> parseOctave
+        -- <|> parseDuration
         <|> parseVar
+        <|> parseBool
         <?> "an expression"
 
 parseNote :: Parser Expr
 parseNote = b_parens (do
-    pc <- parsePitchClass
-    o <- parseOctave
-    dur <- parseDuration
+    pc <- parseExpr
+    o <- parseExpr
+    dur <- parseExpr
     return (Note pc o dur))
 
 parseRest :: Parser Expr
@@ -211,14 +227,37 @@ strToDur s = case s of
     "ddqn" -> E.ddqn
     "dden" -> E.dden
 
+parseBool :: Parser Expr
+parseBool = parseTrue <|> parseFalse
+    where
+    parseTrue = b_reserved "true" *> return (B True) <?> "true"
+    parseFalse = b_reserved "false" *> return (B False) <?> "false"
+
+parseNum :: Parser Expr
+parseNum = do
+    p <- b_number
+    res <- case p of
+        Left i -> N i <$> getLoc
+        Right d -> D d <$> getLoc
+    addState res
+    return res
+
 -- ===========
--- Snippet Expr
+-- Operation Expressions
 -- ===========
 
-parseSnippetOp :: Parser Expr
-parseSnippetOp = buildExpressionParser snippetTable (parseSnippet <?> "a snippet: {Note | Rest}") <?> "snippet op"
-snippetTable = [[ Infix (b_resop ":=:" *> return (:=:)) AssocRight
-                , Infix (b_resop ":+:" *> return (:+:)) AssocRight ]]
+parseOp :: Parser Expr
+parseOp = buildExpressionParser opTable parseExpr <?> "snippet op"
+opTable = [ [ inf ":=:" (ParOp) AssocRight , inf ":+:" (SeqOp) AssocRight]
+          , [ Prefix (b_resop "!" >> return (UnOpExpr Not))]
+          , [ math "*" (Mult) , math "/" (Div)]
+          , [ math "+" (Add) , math "-" (Sub)]
+          , [ math "<" (Lt), math "<=" (Lte), math ">" (Gt), math ">=" (Gte)]
+          , [ math "==" (Eq), math "!=" (Neq)]
+          ]
+    where
+        inf name op assoc = Infix (b_resop name *> return (BinOpExpr op)) assoc
+        math name op = inf name op AssocLeft
 
 -- ============
 -- Utility
