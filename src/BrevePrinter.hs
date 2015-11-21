@@ -10,7 +10,7 @@ import qualified Euterpea.Music.Note.Music as E
 
 unparse :: Statement -> String
 unparse (Seq ss) = intercalate (";\n") $ map unparse ss
-unparse (v := e) = unwords [v, ":=", unparseExpr e]
+unparse (v := e) = unwords [v, "=", unparseExpr e]
 
 unparseExpr :: Expr -> String
 unparseExpr (PitchClass p _) = show p
@@ -19,6 +19,8 @@ unparseExpr (Duration d _) = durToStr d
 unparseExpr (Note p o d) = '(' : unwords (map unparseExpr [p,o,d]) ++ ")"
 unparseExpr (Rest d) = concat ["(", " rest", unparseExpr d, " )"]
 unparseExpr (Snippet ss) = '{' : intercalate ", " (map unparseExpr ss) ++ "}"
+unparseExpr (e1 :=: e2) = unwords [unparseExpr e1, ":=:", unparseExpr e2]
+unparseExpr (e1 :+: e2) = unwords [unparseExpr e1, ":+:", unparseExpr e2]
 unparseExpr (Var s) = s
 
 durToStr :: E.Dur -> String
