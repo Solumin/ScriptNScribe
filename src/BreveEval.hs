@@ -28,27 +28,44 @@ interp input = let (prog,_) = parse input in
 
 -- Takes source code and turns it into a single musical phrase
 eval :: String -> Music
-eval input = case lookup "main" (interp input) of
-    Just m -> makeMusic m
-    Nothing -> error "No main in program."
+eval input = let env = interp input in
+    case lookup "main" env of
+        Just m -> makeMusic env m
+        Nothing -> error "No main in program."
 
 -- Takes source code and performs the music described in it
 perform :: String -> IO()
 perform = Euterpea.play . eval
 
--- interpStatement _ _ = [("main", N 5 (0,0))]
 makeMusic _ = (E.f 4 E.wn)
 
--- ========
+-- ==========
 -- Interpret
--- ========
+-- ==========
 
 interpStatement :: Env -> Statement -> Env
 interpStatement env (Seq ss) = foldl interpStatement env ss
 interpStatement env (Assign v e) = (v, interpExpr env e) : env
 
+-- interpExpr takes the environment and an expression and returns an interpreted
+-- expression.
+-- For basic Expr, like PitchClass, N, etc., this just returns the Expr.
+-- Op expressions interpret their arguments, returning the same op.
+-- Note, Rests, Snippets are run through a smart constructor to make
+-- sure the expressions are the correct types.
+-- List *SHOULD* be type checked via a smart constructor, but it isn't. (yet)
+-- Var expr are looked up in the environment, and throw an error if the
+-- expression isn't found.
 interpExpr :: Env -> Expr -> Expr
-interpExpr env (Note p o d) = note (interpExpr env p) (interpExpr env o) (interpExpr env d)
+interpExpr env p@(PitchClass _ _) = p
+interpExpr env n@(N _ _) = n
+interpExpr env d@(D _ _) = d
+interpExpr env b@(B _) = b
+interpExpr env (UnOpExpr op e) = UnOpExpr op (interpExpr env e)
+interpExpr env (BinOpExpr op e1 e2) =
+    BinOpExpr op (interpExpr env e1) (interpExpr env e2)
+interpExpr env (Note p o d) =
+    note (interpExpr env p) (interpExpr env o) (interpExpr env d)
 interpExpr env (Rest d) = rest (interpExpr env d)
 interpExpr env (Snippet ss) = snippet (map (interpExpr env) ss)
 interpExpr env (Var v) = case lookup v env of
@@ -70,6 +87,10 @@ snippet' :: Expr -> [Expr] -> Expr
 snippet' (Snippet ss) ((n@(Note _ _ _)):ns) = snippet' (Snippet (ss ++ [n])) ns
 snippet' (Snippet ss) ((r@(Rest _)):rs) = snippet' (Snippet (ss ++ [r])) rs
 snippet' (Snippet ss) _ = error "Snippet takes only Notes and Rests"
+
+-- ==========
+-- Evaluating
+-- ==========
 
 {-
 
