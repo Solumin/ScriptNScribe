@@ -21,7 +21,7 @@ var ::= letter { letter | digit }*
 list = [ pitchclass | duration | octave | note | rest | snippet | var ]
 
 expr ::= note | rest | list | snippet | expr duop expr
-statement ::= var := expr | var := snippet | statement {; statement}*
+statement ::= var = expr | var = snippet | statement {; statement}*
 
 lineComment ::= --
 blockComment ::= {- ... -}
@@ -72,7 +72,7 @@ data BinOp =
     deriving (Show, Eq)
 data UnOp = Not deriving (Show, Eq)
 
-data Statement = String := Expr | Seq [Statement] deriving (Show, Eq)
+data Statement = Assign String Expr | Seq [Statement] deriving (Show, Eq)
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
 durations = ["bn","wn","hn","qn","en","sn","sfn","tn","dwn","dhn","dqn","den",
@@ -138,7 +138,7 @@ parseAssign = do
     v <- b_identifier
     b_resop "="
     e <- parseExpr
-    return (v := e)
+    return (Assign v e)
 
 -- ===================
 -- Parsing Expressions
@@ -148,13 +148,13 @@ parseExpr :: Parser Expr
 parseExpr = try parseNote
         <|> try parseRest
         <|> parseNum
-        <|> parseOp
         <|> parseSnippet
         <|> parsePitchClass
         -- <|> parseOctave
         -- <|> parseDuration
         <|> parseVar
         <|> parseBool
+        <|> parseOp -- True story: I once made ghci panic by putting this higher in parseExpr
         <?> "an expression"
 
 parseNote :: Parser Expr
