@@ -35,10 +35,8 @@ eval input =
         Nothing -> error "No main in program."
 
 -- Takes source code and performs the music described in it
--- perform :: String -> IO()
--- perform = Euterpea.play . eval
-
--- makeMusic _ = (E.f 4 E.wn)
+perform :: String -> IO()
+perform = Euterpea.play . eval
 
 -- ==========
 -- Interpret
