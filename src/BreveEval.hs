@@ -9,6 +9,8 @@ import qualified Euterpea (play, line)
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
+import Data.Maybe (fromMaybe)
+
 type Music = E.Music E.Pitch
 
 type Binding = (String, Expr)
@@ -66,9 +68,7 @@ interpExpr env (Note p o d) =
     Note (interpExpr env p) (interpExpr env o) (interpExpr env d)
 interpExpr env (Rest d) = Rest (interpExpr env d)
 interpExpr env (Snippet ss) = Snippet (map (interpExpr env) ss)
-interpExpr env (Var v) = case lookup v env of
-    Just e -> e
-    Nothing -> error ("Uknown variable " ++ v)
+interpExpr env (Var v) = fromMaybe (error ("Unknown variable " ++ v)) (lookup v env)
 interpExpr env (List ls) = List (map (interpExpr env) ls)
 
 -- ==========
@@ -78,7 +78,7 @@ interpExpr env (List ls) = List (map (interpExpr env) ls)
 -- Main can validly be a note, a rest or a snippet.
 -- Notes and Rests are lifted to Snippets automatically.
 evalMain :: Env -> Expr -> Music
-evalMain env n@(Note _ _ _) = evalMain env (Snippet [n])
+evalMain env n@(Note{}) = evalMain env (Snippet [n])
 evalMain env r@(Rest _) = evalMain env (Snippet [r])
 evalMain env s@(Snippet _) = let (Vm m) = evalExpr env s in m
 evalMain _ _ = error "Main must be a Snippet (or a Note or Rest)"
@@ -118,7 +118,7 @@ evalBinOp Mult (Vn n1) (Vn n2) = Vn (n1 * n2)
 
 -- Note that Div always returns a double!!
 evalBinOp Div (Vd d1) (Vd d2) = Vd (d1 / d2)
-evalBinOp Div (Vn n1) (Vn n2) = Vd ((fromInteger n1) / (fromInteger n2))
+evalBinOp Div (Vn n1) (Vn n2) = Vd (fromInteger n1 / fromInteger n2)
 
 evalBinOp SeqOp (Vm m1) (Vm m2) = Vm (m1 E.:+: m2)
 evalBinOp ParOp (Vm m1) (Vm m2) = Vm (m1 E.:=: m2)
@@ -131,7 +131,7 @@ evalBinOp Gt  (Vb b1) (Vb b2) = Vb (b1 >  b2)
 evalBinOp Gte (Vb b1) (Vb b2) = Vb (b1 >= b2)
 
 note :: Val -> Val -> Val -> Val
-note (Vp p) o d = Vm $ E.note (valToDur d) (p, (valToOct o))
+note (Vp p) o d = Vm $ E.note (valToDur d) (p, valToOct o)
 note _ _ _ = error "Note takes a pitch class, an octave and a duration"
 
 rest :: Val -> Val
@@ -150,6 +150,6 @@ valToOct _ = error "Octaves must be integers"
 
 line :: [Val] -> Music
 line [] = E.rest 0
-line [(Vm m)] = m
-line ((Vm m):vs) = m E.:+: (line vs)
+line [Vm m] = m
+line (Vm m : vs) = m E.:+: line vs
 line _ = error "Expected music in the snippet"
