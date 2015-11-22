@@ -38,6 +38,7 @@ Output:
     (snippet 1) Treble cleff, with 3...
 -}
 import qualified Euterpea.Music.Note.Music as E
+import Data.List (intercalate)
 import Text.Parsec
 import Text.Parsec.Expr
 import Text.Parsec.Language (emptyDef)
@@ -63,20 +64,55 @@ data Expr = PitchClass E.PitchClass Loc
           -- | Expr :+: Expr
           | Var String
           -- | List [Expr]         -- Homogeneous
-          deriving (Show, Eq)
+          deriving (Eq)
+
+instance Show Expr where
+    show (PitchClass e _) = show e
+    show (Octave o _) = show o
+    show (Duration d _) = durToStr d
+    show (N i _) = show i
+    show (D d _) = show d
+    show (B b) = show b
+    show (UnOpExpr u e) = shows u (show e)
+    show (BinOpExpr b@Div e1 e2) = concat [show e1, show b, show e2]
+    show (BinOpExpr b e1 e2) = unwords [show e1, show b, show e2]
+    show (Note p o d) = '(' : unwords [show p, show o, shows d ")"]
+    show (Rest d) = "(rest " ++ shows d ")"
+    show (Snippet ss) = '{' : intercalate ", " (map show ss) ++ "}"
+    show (Var v) = v
 
 data BinOp =
       SeqOp | ParOp                     -- snippets
     | Add | Mult | Div | Sub            -- match
     | Eq | Neq | Lt | Lte | Gt | Gte    -- equality
-    deriving (Show, Eq)
-data UnOp = Not deriving (Show, Eq)
+    deriving (Eq)
+instance Show BinOp where
+    show SeqOp = ":+:"
+    show ParOp = ":=:"
+    show Add = "+"
+    show Mult = "*"
+    show Div = "/"
+    show Sub = "-"
+    show Eq = "=="
+    show Neq = "!="
+    show Lt = "<"
+    show Lte = "<="
+    show Gt = ">"
+    show Gte = ">="
 
-data Statement = Assign String Expr | Seq [Statement] deriving (Show, Eq)
+data UnOp = Not deriving (Eq)
+instance Show UnOp where
+    show Not = "!"
+
+data Statement = Assign String Expr | Seq [Statement] deriving (Eq)
+instance Show Statement where
+    show (Assign s e) = unwords [s, "=", shows e ";"]
+    show (Seq ss) = unlines (map show ss)
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
-durations = ["bn","wn","hn","qn","en","sn","sfn","tn","dwn","dhn","dqn","den",
-    "dsn","dtn", "ddhn","ddqn","dden"]
+durations =[]
+-- ["bn","wn","hn","qn","en","sn","sfn","tn","dwn","dhn","dqn","den",
+--     "dsn","dtn", "ddhn","ddqn","dden"]
 keywords = ["rest", "true", "false", "if", "else", "def"]
 mathOps = ["+", "-", "/", "*"]
 boolOps = ["==", "<", "<=", ">", ">="]
@@ -145,7 +181,11 @@ parseAssign = do
 -- ===================
 
 parseExpr :: Parser Expr
-parseExpr = try parseNote
+parseExpr = try parseE <|> b_parens parseE <?> "expression"
+    where parseE = parseOp <|> parseTerm
+
+parseTerm :: Parser Expr
+parseTerm = try parseNote
         <|> try parseRest
         <|> parseNum
         <|> parseSnippet
@@ -154,7 +194,6 @@ parseExpr = try parseNote
         -- <|> parseDuration
         <|> parseVar
         <|> parseBool
-        <|> parseOp -- True story: I once made ghci panic by putting this higher in parseExpr
         <?> "an expression"
 
 parseNote :: Parser Expr
@@ -165,7 +204,7 @@ parseNote = b_parens (do
     return (Note pc o dur))
 
 parseRest :: Parser Expr
-parseRest = Rest <$> b_parens (b_reserved "rest" *> parseDuration)
+parseRest = Rest <$> b_parens (b_reserved "rest" *> parseExpr)
 
 parseSnippet :: Parser Expr
 parseSnippet = Snippet <$> b_braces (b_commaSep (try parseNote <|> try parseRest <?> msg))
@@ -247,16 +286,17 @@ parseNum = do
 -- ===========
 
 parseOp :: Parser Expr
-parseOp = buildExpressionParser opTable parseExpr <?> "snippet op"
-opTable = [ [ inf ":=:" (ParOp) AssocRight , inf ":+:" (SeqOp) AssocRight]
+parseOp = buildExpressionParser opTable parseTerm <?> "snippet op"
+
+opTable = [ [ inf ":=:" ParOp AssocRight , inf ":+:" SeqOp AssocRight]
           , [ Prefix (b_resop "!" >> return (UnOpExpr Not))]
-          , [ math "*" (Mult) , math "/" (Div)]
-          , [ math "+" (Add) , math "-" (Sub)]
-          , [ math "<" (Lt), math "<=" (Lte), math ">" (Gt), math ">=" (Gte)]
-          , [ math "==" (Eq), math "!=" (Neq)]
+          , [ math "*" Mult , math "/" Div]
+          , [ math "+" Add , math "-" Sub]
+          , [ math "<" Lt, math "<=" Lte, math ">" Gt, math ">=" Gte]
+          , [ math "==" Eq, math "!=" Neq]
           ]
     where
-        inf name op assoc = Infix (b_resop name *> return (BinOpExpr op)) assoc
+        inf name op = Infix (b_resop name *> return (BinOpExpr op))
         math name op = inf name op AssocLeft
 
 -- ============
@@ -273,3 +313,24 @@ addState :: Expr -> Parser ()
 addState s = do
     modifyState ((:) s)
     return ()
+
+durToStr :: E.Dur -> String
+durToStr d
+    | d == E.bn = "bn"
+    | d == E.wn = "wn"
+    | d == E.hn = "hn"
+    | d == E.qn = "qn"
+    | d == E.en = "en"
+    | d == E.sn = "sn"
+    | d == E.sfn = "sfn"
+    | d == E.tn = "tn"
+    | d == E.dwn = "dwn"
+    | d == E.dhn = "dhn"
+    | d == E.dqn = "dqn"
+    | d == E.den = "den"
+    | d == E.dsn = "dsn"
+    | d == E.dtn = "dtn"
+    | d == E.ddhn = "ddhn"
+    | d == E.ddqn = "ddqn"
+    | d == E.dden = "dden"
+    | otherwise = show d
