@@ -12,7 +12,6 @@ module BreveLang
 {-
 Breve:
 pitchclass ::= A | B ...
-duration ::= qn | wn ...
 octave ::= digit { digit }*
 note ::= ( pitchclass octave duration )
 rest ::= ( "rest" duration )
@@ -105,10 +104,8 @@ instance Show Statement where
     show (Seq ss) = unlines (map show ss)
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
-durations =[]
--- ["bn","wn","hn","qn","en","sn","sfn","tn","dwn","dhn","dqn","den",
---     "dsn","dtn", "ddhn","ddqn","dden"]
 keywords = ["rest", "true", "false", "if", "else", "def"]
+
 mathOps = ["+", "-", "/", "*"]
 boolOps = ["==", "<", "<=", ">", ">="]
 catOps = ["=", ":=:", ":+:"]
@@ -122,27 +119,21 @@ breveDef = emptyDef { commentStart = "{-"
                     , identLetter = alphaNum <|> char '_' <|> char '-'
                     , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
-                    , reservedNames = pitchClasses ++ durations ++ keywords
+                    , reservedNames = pitchClasses ++ keywords
                     , reservedOpNames = catOps ++ mathOps ++ boolOps
                     , caseSensitive = True
                     }
 
 -- extract the parsers we need
 TokenParser { identifier = b_identifier
-            , reserved = b_reserved -- maybe separator into own parsers, natch?
-            , operator = b_op
+            , reserved = b_reserved
             , reservedOp = b_resop
-            , stringLiteral = b_stringLit
-            , integer = b_int
-            , natural = b_natural
             , naturalOrFloat = b_number
             , symbol = b_symbol
-            , lexeme = b_lexeme -- perhaps using this instead of reserved.
             , parens = b_parens
             , braces = b_braces
             , brackets = b_brackets
             , semi = b_semi
-            -- , semiSep1 = b_semiSep1
             , commaSep = b_commaSep
             , whiteSpace = b_whitespace } = makeTokenParser breveDef
 -- The default semiSep1 uses sepBy, which expects something like "a, b, c".
@@ -186,8 +177,6 @@ parseTerm = try parseNote
         <|> parseList
         <|> parseNum
         <|> parsePitchClass
-        -- <|> parseOctave
-        -- <|> parseDuration
         <|> parseVar
         <|> parseBool
         <?> "an expression"
@@ -210,7 +199,6 @@ parseVar :: Parser Expr
 parseVar = Var <$> b_identifier
 
 parsePitchClass :: Parser Expr
--- parsePitchClass = (PitchClass <$> (read <$> parser) <*> getLoc) >>= (\e -> addState e *> return e)
 parsePitchClass = do
     pc <- parser
     loc <- getLoc
@@ -222,7 +210,7 @@ parsePitchClass = do
         msg = "capitol letter A-G, possibly followed by ff, f, s or ss"
 
 parseList :: Parser Expr
-parseList = List <$> b_brackets (b_commaSep (parseExpr))
+parseList = List <$> b_brackets (b_commaSep parseExpr)
 
 parseBool :: Parser Expr
 parseBool = parseTrue <|> parseFalse
@@ -238,47 +226,6 @@ parseNum = do
         Right d -> D d <$> getLoc
     addState res
     return res
-
--- parseOctave :: Parser Expr
--- -- parseOctave = fmap (Octave . fromInteger) parser
--- parseOctave = do
---     o <- parser
---     loc <- getLoc
---     let oct = Octave (fromInteger o) loc
---     addState oct
---     return oct
---     where parser = b_natural <?> "natural number (0 - 8, most likely)"
-
--- parseDuration :: Parser Expr
--- -- parseDuration = fmap (Duration . strToDur) parser
--- parseDuration = do
---     d <- parser
---     loc <- getLoc
---     let dur = Duration (strToDur d) loc
---     addState dur
---     return dur
---     where parser = choice (map (try . b_symbol) durations) <?> msg
---           msg = "duration (e.g. qn)"
-
--- strToDur :: String -> E.Dur
--- strToDur s = case s of
---     "bn"   -> E.bn
---     "wn"   -> E.wn
---     "hn"   -> E.hn
---     "qn"   -> E.qn
---     "en"   -> E.en
---     "sn"   -> E.sn
---     "sfn"  -> E.sfn
---     "tn"   -> E.tn
---     "dwn"  -> E.dwn
---     "dhn"  -> E.dhn
---     "dqn"  -> E.dqn
---     "den"  -> E.den
---     "dsn"  -> E.dsn
---     "dtn"  -> E.dtn
---     "ddhn" -> E.ddhn
---     "ddqn" -> E.ddqn
---     "dden" -> E.dden
 
 -- ===========
 -- Operation Expressions
@@ -301,6 +248,7 @@ opTable = [ [ inf ":=:" ParOp AssocRight , inf ":+:" SeqOp AssocRight]
 -- ============
 -- Utility
 -- ============
+
 getLoc :: Parser (Int,Int)
 getLoc = do
     pos <- getPosition
