@@ -42,3 +42,4 @@ durToStr d
     | d == E.ddhn = "ddhn"
     | d == E.ddqn = "ddqn"
     | d == E.dden = "dden"
+    | otherwise = show d
