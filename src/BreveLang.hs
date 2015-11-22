@@ -51,8 +51,6 @@ type Traces = [Expr]
 type Parser = Parsec String Traces
 
 data Expr = PitchClass E.PitchClass Loc
-          | Octave E.Octave Loc
-          | Duration E.Dur Loc
           | N Integer Loc | D Double Loc
           | B Bool
           | UnOpExpr UnOp Expr
@@ -66,8 +64,6 @@ data Expr = PitchClass E.PitchClass Loc
 
 instance Show Expr where
     show (PitchClass e _) = show e
-    show (Octave o _) = show o
-    show (Duration d _) = durToStr d
     show (N i _) = show i
     show (D d _) = show d
     show (B b) = show b
