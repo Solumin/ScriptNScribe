@@ -28,16 +28,17 @@ interp input = let (prog,_) = parse input in
 
 -- Takes source code and turns it into a single musical phrase
 eval :: String -> Music
-eval input = let env = interp input in
+eval input =
+    let env = interp input in
     case lookup "main" env of
-        Just m -> makeMusic m
+        Just main -> let (Vm m) = evalExpr env main in m
         Nothing -> error "No main in program."
 
 -- Takes source code and performs the music described in it
-perform :: String -> IO()
-perform = Euterpea.play . eval
+-- perform :: String -> IO()
+-- perform = Euterpea.play . eval
 
-makeMusic _ = (E.f 4 E.wn)
+-- makeMusic _ = (E.f 4 E.wn)
 
 -- ==========
 -- Interpret
@@ -72,79 +73,84 @@ interpExpr env (Var v) = case lookup v env of
     Nothing -> error ("Uknown variable " ++ v)
 interpExpr env (List ls) = List (map (interpExpr env) ls)
 
-note :: Expr -> Expr -> Expr -> Expr
-note pc@(PitchClass _ _) o@(N _ _) d@(D _ _) = Note pc o d
-note _ _ _ = error "Note takes a pitch class, an octave and a duration"
-
-rest :: Expr -> Expr
-rest d@(D _ _) = Rest d
-
-snippet :: [Expr] -> Expr
-snippet = snippet' (Snippet [])
-
-snippet' :: Expr -> [Expr] -> Expr
-snippet' (Snippet ss) ((n@(Note _ _ _)):ns) = snippet' (Snippet (ss ++ [n])) ns
-snippet' (Snippet ss) ((r@(Rest _)):rs) = snippet' (Snippet (ss ++ [r])) rs
-snippet' (Snippet ss) _ = error "Snippet takes only Notes and Rests"
-
 -- ==========
 -- Evaluating
 -- ==========
 
-{-
+-- Main can validly be a note, a rest or a snippet.
+-- Notes and Rests are lifted to Snippets automatically.
+-- evalMain :: Env -> Expr -> Music
+-- evalMain env n@(Note _ _ _) = evalMain env (Snippet [n])
+-- evalMain env r@(Rest _) = evalMain env (Snippet [r])
+-- evalMain env s@(Snippet ss) = Euterpea.line (map (evalExpr env) ss)
+-- evalMain _ _ = error "Main must be a Snippet (or a Note or Rest)"
 
-type Binding = (String, Music)
-type Env = [Binding]
+data Val = Vp E.PitchClass | Vn Integer | Vd Double | Vb Bool | Vm Music | VList [Val]
 
--- Take a program and produce the AST and traces
-interp :: String -> (Statement, Traces)
-interp input = case runParser breveParser [] "input" input of
-    Left err -> error (show err)
-    Right st -> st
-
--- Take a program and perform it
-run :: String -> IO ()
-run s = runEnv s []
-
-runEnv :: String -> Env -> IO ()
-runEnv input env = let (prog,_) = interp input in
-    case lookup "main" (eval env prog) of
-        Just m ->  E.play m
-        Nothing -> putStrLn "<No main>"
-
--- run :: Statement -> Env -> IO()
--- run s env = case lookup "main" (eval env s) of
---     Just m ->  putStrLn (show m) >> putStrLn (show t) >> E.play m
---     Nothing -> putStrLn (show s) >> putStrLn (show t)
-
-eval :: Env -> Statement -> Env
-eval env (Seq ss) = foldl (evalAssign) env ss
-eval env s = evalAssign env s
-
-evalAssign :: Env -> Statement -> Env
-evalAssign env (v := e) = (v, evalExpr env e) : env
-
-evalExpr :: Env -> Expr -> Music
-evalExpr env n@(Note _ _ _) = evalNote n
-evalExpr env r@(Rest _) = evalRest r
-evalExpr env s@(Snippet _) = evalSnippet s
--- evalExpr env (s1 :=: s2) = evalExpr env s1 E.:=: evalExpr env s2
--- evalExpr env (s1 :+: s2) = evalExpr env s1 E.:+: evalExpr env s2
+evalExpr :: Env -> Expr -> Val
+evalExpr env (PitchClass p _) = Vp p
+evalExpr env (N n _) = Vn n
+evalExpr env (D d _) = Vd d
+evalExpr env (B b) = Vb b
+evalExpr env (UnOpExpr op e) = evalUnOp op (evalExpr env e)
+evalExpr env (BinOpExpr op e1 e2) =
+    evalBinOp op (evalExpr env e1) (evalExpr env e2)
+evalExpr env (Note p o d) =
+    note (evalExpr env p) (evalExpr env o) (evalExpr env d)
+evalExpr env (Rest d) = rest (evalExpr env d)
+evalExpr env (Snippet ss) = Vm $ line (map (evalExpr env) ss)
 evalExpr env (Var v) = case lookup v env of
-    Just m -> m
+    Just e -> evalExpr env e
     Nothing -> error ("Unknown variable " ++ v)
+evalExpr env (List ls) = VList (map (evalExpr env) ls)
 
-evalNote :: Expr -> Music
-evalNote (Note (PitchClass p _) (Octave o _) (Duration d _)) = E.note d (p, o)
+evalUnOp :: UnOp -> Val -> Val
+evalUnOp Not (Vb b) = Vb (not b)
+evalUnOp Not _ = error "Not takes boolean"
 
-evalRest :: Expr -> Music
-evalRest (Rest (Duration d _)) = E.rest d
+evalBinOp :: BinOp -> Val -> Val -> Val
+evalBinOp Add (Vd d1) (Vd d2) = Vd (d1 + d2)
+evalBinOp Add (Vn n1) (Vn n2) = Vn (n1 + n2)
 
-evalSnippet :: Expr -> Music
-evalSnippet (Snippet ss) = E.line (map body ss)
-    where
-        body :: Expr -> Music
-        body n@(Note p o d) = evalNote n
-        body r@(Rest d) = evalRest r
-        body e = error ("Snippet can only contain Notes and Rests, received " ++ (show e))
--}
+evalBinOp Sub (Vd d1) (Vd d2) = Vd (d1 - d2)
+evalBinOp Sub (Vn n1) (Vn n2) = Vn (n1 - n2)
+
+evalBinOp Mult (Vd d1) (Vd d2) = Vd (d1 * d2)
+evalBinOp Mult (Vn n1) (Vn n2) = Vn (n1 * n2)
+
+evalBinOp Div (Vd d1) (Vd d2) = Vd (d1 / d2)
+evalBinOp Div (Vn n1) (Vn n2) = Vn (n1 `div` n2)
+
+evalBinOp SeqOp (Vm m1) (Vm m2) = Vm (m1 E.:+: m2)
+evalBinOp ParOp (Vm m1) (Vm m2) = Vm (m1 E.:=: m2)
+
+evalBinOp Eq  (Vb b1) (Vb b2) = Vb (b1 == b2)
+evalBinOp Neq (Vb b1) (Vb b2) = Vb (b1 /= b2)
+evalBinOp Lt  (Vb b1) (Vb b2) = Vb (b1 <  b2)
+evalBinOp Lte (Vb b1) (Vb b2) = Vb (b1 <= b2)
+evalBinOp Gt  (Vb b1) (Vb b2) = Vb (b1 >  b2)
+evalBinOp Gte (Vb b1) (Vb b2) = Vb (b1 >= b2)
+
+note :: Val -> Val -> Val -> Val
+note (Vp p) o d = Vm $ E.note (valToDur d) (p, (valToOct o))
+note _ _ _ = error "Note takes a pitch class, an octave and a duration"
+
+rest :: Val -> Val
+rest (Vd d) = Vm (E.rest (toRational d))
+rest (Vn n) = Vm (E.rest (toRational n))
+rest _ = error "Rests take a duration"
+
+valToDur :: Val -> E.Dur
+valToDur (Vd d) = toRational d
+valToDur (Vn n) = toRational n
+valToDur _ = error "Durations must be numeric types"
+
+valToOct :: Val -> E.Octave
+valToOct (Vn n) = fromInteger n
+valToOct _ = error "Octaves must be integers"
+
+line :: [Val] -> Music
+line [] = E.rest 0
+line [(Vm m)] = m
+line ((Vm m):vs) = m E.:+: (line vs)
+line _ = error "Expected music in the snippet"
