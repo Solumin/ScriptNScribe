@@ -118,8 +118,9 @@ evalBinOp Sub (Vn n1) (Vn n2) = Vn (n1 - n2)
 evalBinOp Mult (Vd d1) (Vd d2) = Vd (d1 * d2)
 evalBinOp Mult (Vn n1) (Vn n2) = Vn (n1 * n2)
 
+-- Note that Div always returns a double!!
 evalBinOp Div (Vd d1) (Vd d2) = Vd (d1 / d2)
-evalBinOp Div (Vn n1) (Vn n2) = Vn (n1 `div` n2)
+evalBinOp Div (Vn n1) (Vn n2) = Vd ((fromInteger n1) / (fromInteger n2))
 
 evalBinOp SeqOp (Vm m1) (Vm m2) = Vm (m1 E.:+: m2)
 evalBinOp ParOp (Vm m1) (Vm m2) = Vm (m1 E.:=: m2)
