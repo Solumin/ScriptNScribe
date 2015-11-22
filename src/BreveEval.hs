@@ -31,7 +31,7 @@ eval :: String -> Music
 eval input =
     let env = interp input in
     case lookup "main" env of
-        Just main -> let (Vm m) = evalExpr env main in m
+        Just main -> evalMain env main
         Nothing -> error "No main in program."
 
 -- Takes source code and performs the music described in it
@@ -77,11 +77,11 @@ interpExpr env (List ls) = List (map (interpExpr env) ls)
 
 -- Main can validly be a note, a rest or a snippet.
 -- Notes and Rests are lifted to Snippets automatically.
--- evalMain :: Env -> Expr -> Music
--- evalMain env n@(Note _ _ _) = evalMain env (Snippet [n])
--- evalMain env r@(Rest _) = evalMain env (Snippet [r])
--- evalMain env s@(Snippet ss) = Euterpea.line (map (evalExpr env) ss)
--- evalMain _ _ = error "Main must be a Snippet (or a Note or Rest)"
+evalMain :: Env -> Expr -> Music
+evalMain env n@(Note _ _ _) = evalMain env (Snippet [n])
+evalMain env r@(Rest _) = evalMain env (Snippet [r])
+evalMain env s@(Snippet _) = let (Vm m) = evalExpr env s in m
+evalMain _ _ = error "Main must be a Snippet (or a Note or Rest)"
 
 data Val = Vp E.PitchClass | Vn Integer | Vd Double | Vb Bool | Vm Music | VList [Val]
 
