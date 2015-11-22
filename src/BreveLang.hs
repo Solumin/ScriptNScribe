@@ -18,7 +18,7 @@ note ::= ( pitchclass octave duration )
 rest ::= ( "rest" duration )
 snippet ::= '{' note {, rest }* '}'
 var ::= letter { letter | digit }*
-list = [ pitchclass | duration | octave | note | rest | snippet | var ]
+list = "[" expr[, expr]* "]"
 
 expr ::= note | rest | list | snippet | expr duop expr
 statement ::= var = expr | var = snippet | statement {; statement}*
@@ -60,10 +60,8 @@ data Expr = PitchClass E.PitchClass Loc
           | Note Expr Expr Expr -- PitchClass, Octave, Duration
           | Rest Expr           -- Duration
           | Snippet [Expr]      -- Note | Rest
-          -- | Expr :=: Expr       -- Snippet :=: Snippet
-          -- | Expr :+: Expr
           | Var String
-          -- | List [Expr]         -- Homogeneous
+          | List [Expr]         -- Homogeneous
           deriving (Eq)
 
 instance Show Expr where
@@ -80,10 +78,11 @@ instance Show Expr where
     show (Rest d) = "(rest " ++ shows d ")"
     show (Snippet ss) = '{' : intercalate ", " (map show ss) ++ "}"
     show (Var v) = v
+    show (List ls) = '[' : intercalate ", " (map show ls) ++ "]"
 
 data BinOp =
       SeqOp | ParOp                     -- snippets
-    | Add | Mult | Div | Sub            -- match
+    | Add | Mult | Div | Sub            -- math
     | Eq | Neq | Lt | Lte | Gt | Gte    -- equality
     deriving (Eq)
 instance Show BinOp where
@@ -187,8 +186,9 @@ parseExpr = try parseE <|> b_parens parseE <?> "expression"
 parseTerm :: Parser Expr
 parseTerm = try parseNote
         <|> try parseRest
-        <|> parseNum
         <|> parseSnippet
+        <|> parseList
+        <|> parseNum
         <|> parsePitchClass
         -- <|> parseOctave
         -- <|> parseDuration
@@ -225,46 +225,8 @@ parsePitchClass = do
         parser = choice (map (try . b_symbol) pitchClasses) <?> msg
         msg = "capitol letter A-G, possibly followed by ff, f, s or ss"
 
-parseOctave :: Parser Expr
--- parseOctave = fmap (Octave . fromInteger) parser
-parseOctave = do
-    o <- parser
-    loc <- getLoc
-    let oct = Octave (fromInteger o) loc
-    addState oct
-    return oct
-    where parser = b_natural <?> "natural number (0 - 8, most likely)"
-
-parseDuration :: Parser Expr
--- parseDuration = fmap (Duration . strToDur) parser
-parseDuration = do
-    d <- parser
-    loc <- getLoc
-    let dur = Duration (strToDur d) loc
-    addState dur
-    return dur
-    where parser = choice (map (try . b_symbol) durations) <?> msg
-          msg = "duration (e.g. qn)"
-
-strToDur :: String -> E.Dur
-strToDur s = case s of
-    "bn"   -> E.bn
-    "wn"   -> E.wn
-    "hn"   -> E.hn
-    "qn"   -> E.qn
-    "en"   -> E.en
-    "sn"   -> E.sn
-    "sfn"  -> E.sfn
-    "tn"   -> E.tn
-    "dwn"  -> E.dwn
-    "dhn"  -> E.dhn
-    "dqn"  -> E.dqn
-    "den"  -> E.den
-    "dsn"  -> E.dsn
-    "dtn"  -> E.dtn
-    "ddhn" -> E.ddhn
-    "ddqn" -> E.ddqn
-    "dden" -> E.dden
+parseList :: Parser Expr
+parseList = List <$> b_brackets (b_commaSep (parseExpr))
 
 parseBool :: Parser Expr
 parseBool = parseTrue <|> parseFalse
@@ -280,6 +242,47 @@ parseNum = do
         Right d -> D d <$> getLoc
     addState res
     return res
+
+-- parseOctave :: Parser Expr
+-- -- parseOctave = fmap (Octave . fromInteger) parser
+-- parseOctave = do
+--     o <- parser
+--     loc <- getLoc
+--     let oct = Octave (fromInteger o) loc
+--     addState oct
+--     return oct
+--     where parser = b_natural <?> "natural number (0 - 8, most likely)"
+
+-- parseDuration :: Parser Expr
+-- -- parseDuration = fmap (Duration . strToDur) parser
+-- parseDuration = do
+--     d <- parser
+--     loc <- getLoc
+--     let dur = Duration (strToDur d) loc
+--     addState dur
+--     return dur
+--     where parser = choice (map (try . b_symbol) durations) <?> msg
+--           msg = "duration (e.g. qn)"
+
+-- strToDur :: String -> E.Dur
+-- strToDur s = case s of
+--     "bn"   -> E.bn
+--     "wn"   -> E.wn
+--     "hn"   -> E.hn
+--     "qn"   -> E.qn
+--     "en"   -> E.en
+--     "sn"   -> E.sn
+--     "sfn"  -> E.sfn
+--     "tn"   -> E.tn
+--     "dwn"  -> E.dwn
+--     "dhn"  -> E.dhn
+--     "dqn"  -> E.dqn
+--     "den"  -> E.den
+--     "dsn"  -> E.dsn
+--     "dtn"  -> E.dtn
+--     "ddhn" -> E.ddhn
+--     "ddqn" -> E.ddqn
+--     "dden" -> E.dden
 
 -- ===========
 -- Operation Expressions
