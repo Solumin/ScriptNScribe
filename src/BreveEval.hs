@@ -30,7 +30,7 @@ interp input = let (prog,_) = parse input in
 eval :: String -> Music
 eval input = let env = interp input in
     case lookup "main" env of
-        Just m -> makeMusic env m
+        Just m -> makeMusic m
         Nothing -> error "No main in program."
 
 -- Takes source code and performs the music described in it
@@ -51,9 +51,8 @@ interpStatement env (Assign v e) = (v, interpExpr env e) : env
 -- expression.
 -- For basic Expr, like PitchClass, N, etc., this just returns the Expr.
 -- Op expressions interpret their arguments, returning the same op.
--- Note, Rests, Snippets are run through a smart constructor to make
--- sure the expressions are the correct types.
--- List *SHOULD* be type checked via a smart constructor, but it isn't. (yet)
+-- Notes, Rests, Snippets and Lists have their components interpreted. Type
+-- checking will be handled by smart constructors in the eval step.
 -- Var expr are looked up in the environment, and throw an error if the
 -- expression isn't found.
 interpExpr :: Env -> Expr -> Expr
@@ -65,9 +64,9 @@ interpExpr env (UnOpExpr op e) = UnOpExpr op (interpExpr env e)
 interpExpr env (BinOpExpr op e1 e2) =
     BinOpExpr op (interpExpr env e1) (interpExpr env e2)
 interpExpr env (Note p o d) =
-    note (interpExpr env p) (interpExpr env o) (interpExpr env d)
-interpExpr env (Rest d) = rest (interpExpr env d)
-interpExpr env (Snippet ss) = snippet (map (interpExpr env) ss)
+    Note (interpExpr env p) (interpExpr env o) (interpExpr env d)
+interpExpr env (Rest d) = Rest (interpExpr env d)
+interpExpr env (Snippet ss) = Snippet (map (interpExpr env) ss)
 interpExpr env (Var v) = case lookup v env of
     Just e -> e
     Nothing -> error ("Uknown variable " ++ v)
