@@ -231,16 +231,18 @@ parseOp :: Parser Expr
 parseOp = buildExpressionParser opTable term <?> "op"
     where term = b_parens parseOp <|> parseTerm
 
-opTable = [ [ inf ":=:" ParOp AssocRight , inf ":+:" SeqOp AssocRight]
-          , [ Prefix (b_resop "!" >> return (UnOpExpr Not))]
-          , [ math "*" Mult , math "/" Div]
-          , [ math "+" Add , math "-" Sub]
-          , [ math "<" Lt, math "<=" Lte, math ">" Gt, math ">=" Gte]
-          , [ math "==" Eq, math "!=" Neq]
+opTable = [ [ inf ParOp AssocRight , inf SeqOp AssocRight]
+          , [ pref Not]
+          , [ math Mult, math Div]
+          , [ math Add, math Sub]
+          , [ bool Lt, bool Lte, bool Gt, bool Gte]
+          , [ bool Eq, bool Neq]
           ]
     where
-        inf name op = Infix (b_resop name *> return (BinOpExpr op))
-        math name op = inf name op AssocLeft
+        pref op = Prefix (b_resop (show op) *> return (UnOpExpr op))
+        inf op = Infix (b_resop (show op) *> return (BinOpExpr op))
+        math op = inf op AssocLeft
+        bool = math -- same structure, just differentiate in the table
 
 -- ============
 -- Utility
