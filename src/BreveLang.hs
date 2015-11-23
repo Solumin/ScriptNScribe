@@ -182,11 +182,7 @@ parseTerm = try parseNote
         <?> "an expression"
 
 parseNote :: Parser Expr
-parseNote = b_parens (do
-    pc <- parseExpr
-    o <- parseExpr
-    dur <- parseExpr
-    return (Note pc o dur))
+parseNote = b_parens (Note <$> parseExpr <*> parseExpr <*> parseExpr)
 
 parseRest :: Parser Expr
 parseRest = Rest <$> b_parens (b_reserved "rest" *> parseExpr)
@@ -232,7 +228,8 @@ parseNum = do
 -- ===========
 
 parseOp :: Parser Expr
-parseOp = buildExpressionParser opTable parseTerm <?> "snippet op"
+parseOp = buildExpressionParser opTable term <?> "op"
+    where term = b_parens parseOp <|> parseTerm
 
 opTable = [ [ inf ":=:" ParOp AssocRight , inf ":+:" SeqOp AssocRight]
           , [ Prefix (b_resop "!" >> return (UnOpExpr Not))]
