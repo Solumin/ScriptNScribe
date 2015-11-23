@@ -16,9 +16,10 @@ reservedOpNames = [] -- ??
 caseSenseitive = True
 
 Breve:
-pitchclass ::= A | B ...
+pitchclass ::= A | B | C | D | E | F | G | ... (sharps, flats, etc)
+integer ::= digit { digit }*
 duration ::= qn | wn ...
-octave ::= digit { digit }*
+octave ::= number
 note ::= ( pitchclass octave duration )
 rest ::= ( "rest" duration )
 snippet ::= '{' note {, rest }* '}'
@@ -55,3 +56,16 @@ breveDef = emptyDef { commentStart = "{-"
                     , reservedOpNames = [":=", ":=:", ":+:"]
                     , caseSenseitive = True
                     }
+
+Changes:
+- Primitive values: numbers (ints and floats/rationals), bools, ???
+    -> Basic operations for primitive types: comparison, math...
+    -> Durations: just rationals, like in Eut, and the "qn" etc. will be
+    built-in functions or values/constants.
+        -> No functions yet, just make Prelude of "qn = ..." forever
+        -> Puts me in an odd spot with tracing though! "qn = ..." needs to be
+frozen, but what happens if the user changes that value?? -> structural?
+- Functions: definition (statement) and application (expression)
+    -> lambdas? (would also be expression)
+- Control flow: Conditionals, at least if-statements or cases?
+- Types (might be overkill at the moment though.)
