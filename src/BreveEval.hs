@@ -85,6 +85,36 @@ evalMain _ _ = error "Main must be a Snippet (or a Note or Rest)"
 
 data Val = Vp E.PitchClass | Vn Integer | Vd Double | Vb Bool | Vm Music | VList [Val]
 
+instance Show Val where
+    show (Vp p) = "PitchClass <" ++ (shows p ">")
+    show (Vn n) = "Integer <" ++ (shows n ">")
+    show (Vd d) = "Double <" ++ (shows d ">")
+    show (Vb b) = show b
+    show (Vm m) = "Music"
+    show (VList l) = "VList"
+
+instance Eq Val where
+    (Vp a) == (Vp b) = a == b
+    (Vn a) == (Vn b) = a == b
+    (Vn a) == (Vd b) = (fromInteger a) == b
+    (Vd a) == (Vn b) = (Vn b) == (Vd a)
+    (Vd a) == (Vd b) = a == b
+    (Vb a) == (Vb b) = a == b
+    (Vm a) == (Vm b) = a == b
+    (VList a) == (VList b) = a == b
+    a == b = error $ unwords ["Cannot compare", show a, "and", show b]
+
+instance Ord Val where
+    (Vp a) <= (Vp b) = a <= b
+    (Vn a) <= (Vn b) = a <= b
+    (Vn a) <= (Vd b) = (fromInteger a) <= b
+    (Vd a) <= (Vn b) = a <= (fromInteger b)
+    (Vd a) <= (Vd b) = a <= b
+    (Vb a) <= (Vb b) = a <= b
+    (Vm a) <= (Vm b) = a <= b
+    (VList a) <= (VList b) = a <= b
+    a <= b = error $ unwords ["Cannot compare", show a, "and", show b]
+
 evalExpr :: Env -> Expr -> Val
 evalExpr env (PitchClass p _) = Vp p
 evalExpr env (N n _) = Vn n
@@ -106,9 +136,12 @@ evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not (Vb b) = Vb (not b)
 evalUnOp Not _ = error "Not takes boolean"
 
+-- There's got to be a better way
 evalBinOp :: BinOp -> Val -> Val -> Val
+
 evalBinOp Add (Vd d1) (Vd d2) = Vd (d1 + d2)
 evalBinOp Add (Vn n1) (Vn n2) = Vn (n1 + n2)
+-- evalBinOp Add (Vp pc) (Vd d) = Vp (pcToInt pc + d)
 
 evalBinOp Sub (Vd d1) (Vd d2) = Vd (d1 - d2)
 evalBinOp Sub (Vn n1) (Vn n2) = Vn (n1 - n2)
@@ -123,12 +156,14 @@ evalBinOp Div (Vn n1) (Vn n2) = Vd (fromInteger n1 / fromInteger n2)
 evalBinOp SeqOp (Vm m1) (Vm m2) = Vm (m1 E.:+: m2)
 evalBinOp ParOp (Vm m1) (Vm m2) = Vm (m1 E.:=: m2)
 
-evalBinOp Eq  (Vb b1) (Vb b2) = Vb (b1 == b2)
-evalBinOp Neq (Vb b1) (Vb b2) = Vb (b1 /= b2)
-evalBinOp Lt  (Vb b1) (Vb b2) = Vb (b1 <  b2)
-evalBinOp Lte (Vb b1) (Vb b2) = Vb (b1 <= b2)
-evalBinOp Gt  (Vb b1) (Vb b2) = Vb (b1 >  b2)
-evalBinOp Gte (Vb b1) (Vb b2) = Vb (b1 >= b2)
+evalBinOp Eq  a b = Vb (a == b)
+evalBinOp Neq a b = Vb (a /= b)
+evalBinOp Lt  a b = Vb (a <  b)
+evalBinOp Lte a b = Vb (a <= b)
+evalBinOp Gt  a b = Vb (a >  b)
+evalBinOp Gte a b = Vb (a >= b)
+
+evalBinOp o a b = error $ unwords ["Op", show o, "is undefined for args", show a, show b]
 
 note :: Val -> Val -> Val -> Val
 note (Vp p) o d = Vm $ E.note (valToDur d) (p, valToOct o)
