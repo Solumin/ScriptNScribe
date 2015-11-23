@@ -167,8 +167,23 @@ parseAssign = do
 -- ===================
 
 parseExpr :: Parser Expr
-parseExpr = try parseE <|> b_parens parseE <?> "expression"
-    where parseE = parseOp <|> parseTerm
+parseExpr = buildExpressionParser opTable term <?> msg
+    where
+        term = parseTerm <|> b_parens parseExpr <?> msg
+        msg = "an expression or operation (the statement ended early!)"
+
+opTable = [ [ inf ParOp AssocRight, inf SeqOp AssocRight]
+          , [ pref Not]
+          , [ math Mult, math Div]
+          , [ math Add, math Sub]
+          , [ bool Lt, bool Lte, bool Gt, bool Gte]
+          , [ bool Eq, bool Neq]
+          ]
+    where
+        pref op = Prefix (b_resop (show op) *> return (UnOpExpr op))
+        inf op = Infix (b_resop (show op) *> return (BinOpExpr op))
+        math op = inf op AssocLeft
+        bool = math -- same structure, just differentiate in the table
 
 parseTerm :: Parser Expr
 parseTerm = try parseNote
@@ -179,7 +194,6 @@ parseTerm = try parseNote
         <|> parsePitchClass
         <|> parseVar
         <|> parseBool
-        <?> "an expression"
 
 parseNote :: Parser Expr
 parseNote = b_parens (Note <$> parseExpr <*> parseExpr <*> parseExpr)
@@ -222,27 +236,6 @@ parseNum = do
         Right d -> D d <$> getLoc
     addState res
     return res
-
--- ===========
--- Operation Expressions
--- ===========
-
-parseOp :: Parser Expr
-parseOp = buildExpressionParser opTable term <?> "op"
-    where term = b_parens parseOp <|> parseTerm
-
-opTable = [ [ inf ParOp AssocRight , inf SeqOp AssocRight]
-          , [ pref Not]
-          , [ math Mult, math Div]
-          , [ math Add, math Sub]
-          , [ bool Lt, bool Lte, bool Gt, bool Gte]
-          , [ bool Eq, bool Neq]
-          ]
-    where
-        pref op = Prefix (b_resop (show op) *> return (UnOpExpr op))
-        inf op = Infix (b_resop (show op) *> return (BinOpExpr op))
-        math op = inf op AssocLeft
-        bool = math -- same structure, just differentiate in the table
 
 -- ============
 -- Utility
