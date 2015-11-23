@@ -10,6 +10,7 @@ import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
 import Data.Maybe (fromMaybe)
+import Data.List (intersperse)
 
 type Music = E.Music E.Pitch
 
@@ -91,7 +92,7 @@ instance Show Val where
     show (Vd d) = "Double <" ++ (shows d ">")
     show (Vb b) = show b
     show (Vm m) = "Music"
-    show (VList l) = "VList"
+    show (VList l) = "Vlist [" ++ concat (intersperse ", " (map show l)) ++ "]"
 
 instance Eq Val where
     (Vp a) == (Vp b) = a == b
