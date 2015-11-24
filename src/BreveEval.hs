@@ -142,10 +142,18 @@ evalBinOp :: BinOp -> Val -> Val -> Val
 
 evalBinOp Add (Vd d1) (Vd d2) = Vd (d1 + d2)
 evalBinOp Add (Vn n1) (Vn n2) = Vn (n1 + n2)
--- evalBinOp Add (Vp pc) (Vd d) = Vp (pcToInt pc + d)
+-- Using the behavior of Euterpea's pitch and trans functions, which always
+-- return a Sharp note instead of a flat enharmonic.
+evalBinOp Add (Vp pc) (Vn n) = Vp (pitches !! ((E.pcToInt pc + d) `mod` 12))
+    where
+        pitches = [E.C, E.Cs, E.D, E.Ds, E.E, E.F, E.Fs, E.G, E.Gs, E.A, E.As, E.B]
+        d = fromInteger n
+evalBinOp Add d@(Vn n) pc@(Vp p) = evalBinOp Add pc d
 
 evalBinOp Sub (Vd d1) (Vd d2) = Vd (d1 - d2)
 evalBinOp Sub (Vn n1) (Vn n2) = Vn (n1 - n2)
+evalBinOp Sub (Vp pc) (Vn n) = evalBinOp Add (Vp pc) (Vn (negate n))
+evalBinOp Sub (Vn n) (Vp pc) = evalBinOp Add (Vp pc) (Vn (negate n))
 
 evalBinOp Mult (Vd d1) (Vd d2) = Vd (d1 * d2)
 evalBinOp Mult (Vn n1) (Vn n2) = Vn (n1 * n2)
