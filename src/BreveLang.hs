@@ -59,6 +59,7 @@ data Expr = PitchClass E.PitchClass Loc
           | Snippet [Expr]      -- Note | Rest
           | Var String
           | List [Expr]         -- Homogeneous
+          | Lambda [String] Statement    -- Seq or Return, most likely
           deriving (Eq)
 
 instance Show Expr where
@@ -74,6 +75,7 @@ instance Show Expr where
     show (Snippet ss) = '{' : intercalate ", " (map show ss) ++ "}"
     show (Var v) = v
     show (List ls) = '[' : intercalate ", " (map show ls) ++ "]"
+    show (Lambda v s) = '(':'\\': unwords v ++ (shows s ")")
 
 data BinOp =
       SeqOp | ParOp                     -- snippets
@@ -98,10 +100,11 @@ data UnOp = Not deriving (Eq)
 instance Show UnOp where
     show Not = "!"
 
-data Statement = Assign String Expr | Seq [Statement] deriving (Eq)
+data Statement = Assign String Expr | Return Expr | Seq [Statement] deriving (Eq)
 instance Show Statement where
     show (Assign s e) = unwords [s, "=", shows e ";"]
     show (Seq ss) = unlines (map show ss)
+    show (Return e) = "return " ++ (shows e ";")
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
 keywords = ["rest", "true", "false", "if", "else", "def"]
