@@ -75,7 +75,7 @@ instance Show Expr where
     show (Snippet ss) = '{' : intercalate ", " (map show ss) ++ "}"
     show (Var v) = v
     show (List ls) = '[' : intercalate ", " (map show ls) ++ "]"
-    show (Lambda v s) = '(':'\\': unwords v ++ (shows s ")")
+    show (Lambda v s) = '(':'\\': unwords v ++ " -> " ++ (shows s ")")
 
 data BinOp =
       SeqOp | ParOp                     -- snippets
@@ -107,11 +107,11 @@ instance Show Statement where
     show (Return e) = "return " ++ (shows e ";")
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
-keywords = ["rest", "true", "false", "if", "else", "def"]
+keywords = ["rest", "true", "false", "if", "else", "def", "return"]
 
 mathOps = ["+", "-", "/", "*"]
 boolOps = ["==", "<", "<=", ">", ">="]
-catOps = ["=", ":=:", ":+:"]
+catOps = ["=", ":=:", ":+:", "\\", "->"]
 
 breveDef :: LanguageDef st
 breveDef = emptyDef { commentStart = "{-"
@@ -147,7 +147,7 @@ b_semiSep1 p = sepEndBy p b_semi
 
 breveParser :: Parser (Statement, Traces)
 breveParser = do
-    p <- b_whitespace >> fmap Seq (b_semiSep1 parseStatement) <* eof
+    p <- b_whitespace >> parseSeq <* eof
     s <- getState
     return (p, s)
 
@@ -155,8 +155,11 @@ breveParser = do
 -- Parsing Statements
 -- ===================
 
+parseSeq :: Parser Statement
+parseSeq = fmap Seq (b_semiSep1 parseStatement)
+
 parseStatement :: Parser Statement
-parseStatement = try parseAssign
+parseStatement = parseReturn <|> try parseAssign
 
 parseAssign :: Parser Statement
 parseAssign = do
@@ -164,6 +167,9 @@ parseAssign = do
     b_resop "="
     e <- parseExpr
     return (Assign v e)
+
+parseReturn :: Parser Statement
+parseReturn = Return <$> (b_reserved "return" *> parseExpr)
 
 -- ===================
 -- Parsing Expressions
@@ -191,6 +197,7 @@ opTable = [ [ inf ParOp AssocRight, inf SeqOp AssocRight]
 parseTerm :: Parser Expr
 parseTerm = try parseNote
         <|> try parseRest
+        <|> try parseLambda
         <|> parseSnippet
         <|> parseList
         <|> parseNum
@@ -203,6 +210,12 @@ parseNote = b_parens (Note <$> parseExpr <*> parseExpr <*> parseExpr)
 
 parseRest :: Parser Expr
 parseRest = Rest <$> b_parens (b_reserved "rest" *> parseExpr)
+
+parseLambda :: Parser Expr
+parseLambda = b_parens (Lambda <$> args <*> body)
+    where
+        args = b_resop "\\" *> manyTill b_identifier (b_resop "->")
+        body = parseSeq
 
 parseSnippet :: Parser Expr
 parseSnippet = Snippet <$> b_braces (b_commaSep (try parseNote <|> try parseRest <?> msg))
