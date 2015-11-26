@@ -60,6 +60,7 @@ data Expr = PitchClass E.PitchClass Loc
           | Var String
           | List [Expr]         -- Homogeneous
           | Lambda [String] Statement    -- Seq or Return, most likely
+          | App String [Expr]   -- Function name, arguments
           deriving (Eq)
 
 instance Show Expr where
@@ -76,6 +77,7 @@ instance Show Expr where
     show (Var v) = v
     show (List ls) = '[' : intercalate ", " (map show ls) ++ "]"
     show (Lambda v s) = '(':'\\': unwords v ++ " -> " ++ (shows s ")")
+    show (App n as) = n ++ "(" ++ intercalate ", " (map show as) ++ ")"
 
 data BinOp =
       SeqOp | ParOp                     -- snippets
@@ -201,7 +203,8 @@ parseTerm = try parseNote
         <|> parseSnippet
         <|> parseList
         <|> parseNum
-        <|> parsePitchClass
+        <|> try parsePitchClass
+        <|> try parseApp
         <|> parseVar
         <|> parseBool
 
@@ -252,6 +255,9 @@ parseNum = do
         Right d -> D d <$> getLoc
     addState res
     return res
+
+parseApp :: Parser Expr
+parseApp = App <$> b_identifier <*> b_parens (b_commaSep parseExpr)
 
 -- ============
 -- Utility
