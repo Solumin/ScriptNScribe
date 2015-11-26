@@ -109,9 +109,9 @@ instance Show Statement where
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
 keywords = ["rest", "true", "false", "if", "else", "def", "return"]
 
-mathOps = ["+", "-", "/", "*"]
-boolOps = ["==", "<", "<=", ">", ">="]
-catOps = ["=", ":=:", ":+:", "\\", "->"]
+mathOps = map show [Add, Sub, Mult, Div]
+boolOps = map show [Eq, Neq, Lt, Lte, Gt, Gte]
+catOps = map show [SeqOp, ParOp] ++ ["=", "\\", "->"]
 
 breveDef :: LanguageDef st
 breveDef = emptyDef { commentStart = "{-"
