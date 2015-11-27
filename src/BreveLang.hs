@@ -218,7 +218,11 @@ parseLambda :: Parser Expr
 parseLambda = b_parens (Lambda <$> args <*> body)
     where
         args = b_resop "\\" *> manyTill b_identifier (b_resop "->")
-        body = parseSeq
+        body :: Parser Statement
+        body =  do
+            bod <- manyTill (parseAssign <* option "" b_semi) (try $ lookAhead parseReturn)
+            ret <- parseReturn <* option "" b_semi
+            return (Seq (bod ++ [ret]))
 
 parseSnippet :: Parser Expr
 parseSnippet = Snippet <$> b_braces (b_commaSep (try parseNote <|> try parseRest <?> msg))
