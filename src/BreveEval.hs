@@ -44,6 +44,15 @@ interp input = let (prog,_) = parse input in
 parseEval :: String -> Val
 parseEval = eval . interp
 
+toMusic :: Val -> Music
+toMusic (Ve n) = n
+toMusic (Vr r) = r
+toMusic (Vs a b) = (toMusic a) E.:+: (toMusic b)
+toMusic (Vo a b) = (toMusic a) E.:=: (toMusic b)
+
+perform :: String -> IO()
+perform = Euterpea.play . toMusic . eval . interp
+
 -- ==========
 -- Interpret
 -- ==========
@@ -94,14 +103,14 @@ data Val = Vp E.PitchClass
 data FunDef = FunDef [String] Env -- lambda eval'd
 
 instance Show Val where
-    show (Vp p) = "PitchClass <" ++ (shows p ">")
-    show (Vn n) = "Integer <" ++ (shows n ">")
-    show (Vd d) = "Double <" ++ (shows d ">")
-    show (Vb b) = show b
-    show (Ve e) = show e
-    show (Vr r) = show r
-    show (Vs a b) = shows a " :+: " ++ show b
-    show (Vo a b) = shows a " :=: " ++ show b
+    show (Vp p) = "Val_PitchClass <" ++ (shows p ">")
+    show (Vn n) = "Val_Integer <" ++ (shows n ">")
+    show (Vd d) = "Val_Double <" ++ (shows d ">")
+    show (Vb b) = "Val_Bool <" ++ (shows b ">")
+    show (Ve e) = "Val_Note <" ++ (shows e ">")
+    show (Vr r) = "Val_Rest <" ++ (shows r ">")
+    show (Vs a b) = '(' : shows a " :+: " ++ shows b ")"
+    show (Vo a b) = '(' : shows a " :=: " ++ shows b ")"
     show (Vl l) = "Vlist [" ++ concat (intersperse ", " (map show l)) ++ "]"
     show (Vf (FunDef args bins)) = "Function <" ++ shows args ">"
 
