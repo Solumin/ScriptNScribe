@@ -69,13 +69,78 @@ interpExpr env (Note p o d) =
     Note (interpExpr env p) (interpExpr env o) (interpExpr env d)
 interpExpr env (Rest d) = Rest (interpExpr env d)
 interpExpr env (Snippet ss) = Snippet (map (interpExpr env) ss)
-interpExpr env (Var v) = fromMaybe (error ("Unknown variable " ++ v)) (lookup v env)
+interpExpr env v@(Var _) = v
 interpExpr env (List ls) = List (map (interpExpr env) ls)
+interpExpr env l@(Lambda _ _) = l
+interpExpr env (App s es) = App s (map (interpExpr env) es)
 
 -- ==========
 -- Evaluating
 -- ==========
 
+eval :: Env -> Env
+eval env = eval' env []
+
+-- Generates a new environment by shifting all the old bindings to the new
+-- environment, eval'ing as it goes
+eval' :: Env -> Env -> Env
+eval' [] new = new
+eval' ((s,e):old) new = eval' old (s, evalExpr old new e):new
+
+evalExpr :: Env -> Env -> Expr -> Expr
+evalExpr old new exp = let evalE = evalExpr old new in
+     case expr of
+    -- Basic values don't change
+    p@(PitchClass _ _) -> p
+    n@(N _ _) -> n
+    d@(D _ _) -> d
+    b@(B _) -> b
+    -- Notes, Rests and Snippets need to be type checked
+    (Note p o d) -> note (evalE p) (evalE o) (evalE d)
+    (Rest d) -> rest (evalE d)
+    (Snippet ss) -> snippet (map evalE ss)
+    -- Lists don't need to be type checked but they should be evaluated
+    (List ls) -> List (map evalE ls)
+    -- Lambdas don't need to be processed?
+    l@(Lambda _ _) -> l
+    -- The following expressions need to be evaluated to a new result!
+    (UnOpExpr op e) -> evalUnOp op (evalE e)
+    (BinOpExpr op e1 e2) -> evalBinOp op (evalE e1) (evalE e2)
+    (Var s) -> lookupVar old new s
+    (App s args) -> evalApp old new s (map evalE args)
+
+-- Notes absolutely must have a PitchClas and an Integer for the first two
+-- arguments. The third argument may be an Integer or a Double.
+note :: Expr -> Expr -> Expr -> Expr
+note p@(PitchClass _ _) o@(N _ _) dur = Note p o (checkDur dur)
+note _ _ _ = error "A Note requires a PitchClass, an Integer and a number"
+
+-- Rest has the same duration requirements as Note
+rest :: Expr -> Expr
+rest = Rest . checkDur
+
+checkDur :: Expr -> Expr
+checkDur d@(Vd _ _) = d
+checkDur n@(Vn _ _) = n
+checkDur _ = error "A duration must be a number (Integer or Double)"
+
+-- Snippets must have only rests and notes
+snippet :: [Expr] -> Expr
+snippet ss = Snippet (map checkFun ss)
+    where
+    checkFun s = case s of
+        (Note _ _ _) -> s
+        (Rest _ )    -> s
+        _ -> error ("Snippet expects Note or Rest, but received " ++ show s)
+
+lookupVar :: Env -> Env -> String -> Expr
+lookupVar old new v = fromMaybe (
+    fromMaybe (error $ "Unknown variable " ++ show v) (lookup v old)
+    ) (lookup v new)
+
+evalApp :: Env -> Env -> String -> [String] -> Expr
+
+{-
 -- Main can validly be a note, a rest or a snippet.
 -- Notes and Rests are lifted to Snippets automatically.
 evalMain :: Env -> Expr -> Music
@@ -197,3 +262,4 @@ line [] = E.rest 0
 line [Vm m] = m
 line (Vm m : vs) = m E.:+: line vs
 line _ = error "Expected music in the snippet"
+-}
