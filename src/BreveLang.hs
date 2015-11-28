@@ -61,6 +61,7 @@ data Expr = PitchClass E.PitchClass Loc
           | List [Expr]         -- Homogeneous
           | Lambda [String] Statement    -- Seq or Return, most likely
           | App String [Expr]   -- Function name, arguments
+          | If Expr Expr Expr  -- If statement: condition, true branch, false branch
           deriving (Eq)
 
 instance Show Expr where
@@ -78,6 +79,7 @@ instance Show Expr where
     show (List ls) = '[' : intercalate ", " (map show ls) ++ "]"
     show (Lambda v s) = '(':'\\': unwords v ++ " -> " ++ shows s ")"
     show (App n as) = n ++ "(" ++ intercalate ", " (map show as) ++ ")"
+    show (If c t f) = "if " ++ shows c " then " ++ shows t " else " ++ show f
 
 data BinOp =
       SeqOp | ParOp                     -- snippets
@@ -109,7 +111,7 @@ instance Show Statement where
     show (Return e) = "return " ++ shows e ";"
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
-keywords = ["rest", "true", "false", "if", "else", "def", "return"]
+keywords = ["rest", "true", "false", "if", "then", "else", "def", "return"]
 
 mathOps = map show [Add, Sub, Mult, Div]
 boolOps = map show [Eq, Neq, Lt, Lte, Gt, Gte]
@@ -203,6 +205,7 @@ parseTerm = try parseNote
         <|> parseSnippet
         <|> parseList
         <|> parseNum
+        <|> parseIf
         <|> try parsePitchClass
         <|> try parseApp
         <|> parseVar
@@ -262,6 +265,11 @@ parseNum = do
 
 parseApp :: Parser Expr
 parseApp = App <$> b_identifier <*> b_parens (b_commaSep parseExpr)
+
+parseIf :: Parser Expr
+parseIf = If <$> (b_reserved "if" *> parseExpr)
+             <*> (b_reserved "then" *> parseExpr)
+             <*> (b_reserved "else" *> parseExpr)
 
 -- ============
 -- Utility
