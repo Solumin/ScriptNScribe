@@ -10,7 +10,7 @@ import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
 import Data.Maybe (fromMaybe)
-import Data.List (intersperse)
+import Data.List (intercalate)
 
 type Music = E.Music E.Pitch
 
@@ -47,8 +47,8 @@ parseEval = eval . interp
 toMusic :: Val -> Music
 toMusic (Ve n) = n
 toMusic (Vr r) = r
-toMusic (Vs a b) = (toMusic a) E.:+: (toMusic b)
-toMusic (Vo a b) = (toMusic a) E.:=: (toMusic b)
+toMusic (Vs a b) = toMusic a E.:+: toMusic b
+toMusic (Vo a b) = toMusic a E.:=: toMusic b
 
 perform :: String -> IO()
 perform = Euterpea.play . toMusic . eval . interp
@@ -103,22 +103,22 @@ data Val = Vp E.PitchClass
 data FunDef = FunDef [String] Env -- lambda eval'd
 
 instance Show Val where
-    show (Vp p) = "Val_PitchClass <" ++ (shows p ">")
-    show (Vn n) = "Val_Integer <" ++ (shows n ">")
-    show (Vd d) = "Val_Double <" ++ (shows d ">")
-    show (Vb b) = "Val_Bool <" ++ (shows b ">")
-    show (Ve e) = "Val_Note <" ++ (shows e ">")
-    show (Vr r) = "Val_Rest <" ++ (shows r ">")
+    show (Vp p) = "Val_PitchClass <" ++ shows p ">"
+    show (Vn n) = "Val_Integer <" ++ shows n ">"
+    show (Vd d) = "Val_Double <" ++ shows d ">"
+    show (Vb b) = "Val_Bool <" ++ shows b ">"
+    show (Ve e) = "Val_Note <" ++ shows e ">"
+    show (Vr r) = "Val_Rest <" ++ shows r ">"
     show (Vs a b) = '(' : shows a " :+: " ++ shows b ")"
     show (Vo a b) = '(' : shows a " :=: " ++ shows b ")"
-    show (Vl l) = "Vlist [" ++ concat (intersperse ", " (map show l)) ++ "]"
+    show (Vl l) = "Vlist [" ++ intercalate ", " (map show l) ++ "]"
     show (Vf (FunDef args bins)) = "Function <" ++ shows args ">"
 
 instance Eq Val where
     (Vp a) == (Vp b) = a == b
     (Vn a) == (Vn b) = a == b
-    (Vn a) == (Vd b) = (fromInteger a) == b
-    (Vd a) == (Vn b) = (Vn b) == (Vd a)
+    (Vn a) == (Vd b) = fromInteger a == b
+    (Vd a) == (Vn b) = Vn b == Vd a
     (Vd a) == (Vd b) = a == b
     (Vb a) == (Vb b) = a == b
     (Ve a) == (Ve b) = a == b
@@ -131,8 +131,8 @@ instance Eq Val where
 instance Ord Val where
     (Vp a) <= (Vp b) = a <= b
     (Vn a) <= (Vn b) = a <= b
-    (Vn a) <= (Vd b) = (fromInteger a) <= b
-    (Vd a) <= (Vn b) = a <= (fromInteger b)
+    (Vn a) <= (Vd b) = fromInteger a <= b
+    (Vd a) <= (Vn b) = a <= fromInteger b
     (Vd a) <= (Vd b) = a <= b
     (Vb a) <= (Vb b) = a <= b
     (Ve a) <= (Ve b) = a <= b
