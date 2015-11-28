@@ -207,7 +207,20 @@ evalApp :: Env -> String -> [Expr] -> Val
 evalApp env name args =
     let (Lambda p s) = lookupVar env name
         (Vf (FunDef params binds)) = evalFunc p s in
-    evalBinding (binds ++ zip params args ++ env) "return"
+    evalBinding (binds ++ zip params (map (subst env) args) ++ env) "return"
+
+-- Substitutes any Vars with their expression
+subst :: Env -> Expr -> Expr
+subst env expr = let sE = subst env in
+    case expr of
+    (Var s) -> lookupVar env s
+    (UnOpExpr op e) -> UnOpExpr op (sE e)
+    (BinOpExpr op l r) -> BinOpExpr op (sE l) (sE r)
+    (Note p o d) -> Note (sE p) (sE o) (sE d)
+    (Rest d) -> Rest (sE d)
+    (Snippet ss) -> Snippet (map sE ss)
+    (List ls) -> List (map sE ls)
+    _ -> expr
 
 evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not v = case v of
