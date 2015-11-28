@@ -59,7 +59,7 @@ perform = Euterpea.play . toMusic . eval . interp
 
 interpStatement :: Env -> Statement -> Env
 interpStatement env (Seq ss) = foldl interpStatement env ss
-interpStatement env (Assign v e) = (v, interpExpr env e) : env
+interpStatement env (Assign v e) = (v, e) : env
 
 -- interpExpr takes the environment and an expression and returns an interpreted
 -- expression.
@@ -69,6 +69,7 @@ interpStatement env (Assign v e) = (v, interpExpr env e) : env
 -- checking will be handled by smart constructors in the eval step.
 -- Var expr are looked up in the environment, and throw an error if the
 -- expression isn't found.
+{-
 interpExpr :: Env -> Expr -> Expr
 interpExpr env p@(PitchClass _ _) = p
 interpExpr env n@(N _ _) = n
@@ -85,6 +86,7 @@ interpExpr env v@(Var _) = v
 interpExpr env (List ls) = List (map (interpExpr env) ls)
 interpExpr env l@(Lambda _ _) = l
 interpExpr env (App s es) = App s (map (interpExpr env) es)
+-}
 
 -- ==========
 -- Evaluating
@@ -169,6 +171,7 @@ evalExpr env expr = let evalE = evalExpr env in
     (Var s) -> evalE (lookupVar env s)
     (Lambda params body) -> evalFunc params body
     (App name args) -> evalApp env name args
+    (If c t f) -> evalIf env c t f
 
 note :: Val -> Val -> Val -> Val
 note (Vp p) o d = Ve $ E.note (valToDur d) (p, valToOct o)
@@ -221,6 +224,12 @@ subst env expr = let sE = subst env in
     (Snippet ss) -> Snippet (map sE ss)
     (List ls) -> List (map sE ls)
     _ -> expr
+
+evalIf :: Env -> Expr -> Expr -> Expr -> Val
+evalIf env c t f = case (evalExpr env c) of
+    (Vb True) -> evalExpr env t
+    (Vb False) -> evalExpr env f
+    _ -> error $ "Breve is not 'truthy'; conditions must evaluate to bool."
 
 evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not v = case v of
