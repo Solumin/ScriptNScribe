@@ -235,6 +235,10 @@ evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not v = case v of
     (Vb b) -> Vb (not b)
     _ -> error "\"Not\" takes boolean"
+evalUnOp Neg v = case v of
+    (Vn n) -> Vn (-n)
+    (Vd d) -> Vd (-d)
+    _ -> error "Negation is defined for only numbers"
 
 evalBinOp :: BinOp -> Val -> Val -> Val
 

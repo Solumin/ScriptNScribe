@@ -100,9 +100,10 @@ instance Show BinOp where
     show Gt = ">"
     show Gte = ">="
 
-data UnOp = Not deriving (Eq)
+data UnOp = Not | Neg deriving (Eq)
 instance Show UnOp where
     show Not = "!"
+    show Neg = "-"
 
 data Statement = Assign String Expr | Return Expr | Seq [Statement] deriving (Eq)
 instance Show Statement where
@@ -186,7 +187,7 @@ parseExpr = buildExpressionParser opTable term <?> msg
         msg = "an expression or operation (the statement ended early!)"
 
 opTable = [ [ inf ParOp AssocRight, inf SeqOp AssocRight]
-          , [ pref Not]
+          , [ pref Not, pref Neg]
           , [ math Mult, math Div]
           , [ math Add, math Sub]
           , [ bool Lt, bool Lte, bool Gt, bool Gte]
