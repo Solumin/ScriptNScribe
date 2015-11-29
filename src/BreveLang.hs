@@ -257,12 +257,14 @@ parseBool = parseTrue <|> parseFalse
 
 parseNum :: Parser Expr
 parseNum = do
+    sign <- optionMaybe (oneOf "-+")
     p <- b_number
     res <- case p of
-        Left i -> N i <$> getLoc
-        Right d -> D d <$> getLoc
+        Left i -> N (signed sign i) <$> getLoc
+        Right d -> D (signed sign d) <$> getLoc
     addState res
     return res
+    where signed s = (*) (maybe 1 (const (-1)) s)
 
 parseApp :: Parser Expr
 parseApp = App <$> b_identifier <*> b_parens (b_commaSep parseExpr)
