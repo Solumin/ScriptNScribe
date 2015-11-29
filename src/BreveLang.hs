@@ -62,6 +62,7 @@ data Expr = PitchClass E.PitchClass Loc
           | Lambda [String] Statement    -- Seq or Return, most likely
           | App String [Expr]   -- Function name, arguments
           | If Expr Expr Expr  -- If statement: condition, true branch, false branch
+          | Case Expr [(Pat, Expr)] -- case expr of pat -> expr;...
           deriving (Eq)
 
 instance Show Expr where
@@ -80,6 +81,7 @@ instance Show Expr where
     show (Lambda v s) = '(':'\\': unwords v ++ " -> " ++ shows s ")"
     show (App n as) = n ++ "(" ++ intercalate ", " (map show as) ++ ")"
     show (If c t f) = "if " ++ shows c " then " ++ shows t " else " ++ show f
+    show (Case e ps) = "case " ++ shows e " of " ++ map (\(p,r) -> show p ++ " -> " ++ show r) ps
 
 data BinOp =
       SeqOp | ParOp                     -- snippets
@@ -112,7 +114,7 @@ instance Show Statement where
     show (Return e) = "return " ++ shows e ";"
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
-keywords = ["rest", "true", "false", "if", "then", "else", "def", "return"]
+keywords = ["rest", "true", "false", "if", "then", "else", "def", "return", "case", "of"]
 
 mathOps = map show [Add, Sub, Mult, Div]
 boolOps = map show [Eq, Neq, Lt, Lte, Gt, Gte]
@@ -207,6 +209,7 @@ parseTerm = try parseNote
         <|> parseList
         <|> parseNum
         <|> parseIf
+        <|> parseCase
         <|> try parsePitchClass
         <|> try parseApp
         <|> parseVar
@@ -273,6 +276,11 @@ parseIf :: Parser Expr
 parseIf = If <$> (b_reserved "if" *> parseExpr)
              <*> (b_reserved "then" *> parseExpr)
              <*> (b_reserved "else" *> parseExpr)
+
+parseCase :: Parser Expr
+parseCase = Case <$> (b_reserved "case" *> parseExpr)
+                 <*> (b_semiSep1 parsePats)
+    where parsePats = (,) <$> (parsePat <* b_resop "->") <*> parseExpr
 
 -- ============
 -- Utility

@@ -3,15 +3,18 @@ Patterns:
 Expr = ... | Case Expr [Pat]
 
 Pat = 
+    -- Constants
     Ppc E.PitchClass
     Pn Integer
     Pd Double
     Pb Bool
+    -- Structures
     Pnote ??
     Prest ??
     Plist [Pat]
     Psnip {Pat}
-    Pvar
+    -- Variables
+    Pvar String
     Pwc -- wildcard
 
 Should notes and rests be values or exprs? Or some pattern-specific thing? Or
