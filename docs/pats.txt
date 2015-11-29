@@ -1,0 +1,25 @@
+Patterns:
+
+Expr = ... | Case Expr [Pat]
+
+Pat = 
+    Ppc E.PitchClass
+    Pn Integer
+    Pd Double
+    Pb Bool
+    Pnote ??
+    Prest ??
+    Plist [Pat]
+    Psnip {Pat}
+    Pvar
+    Pwc -- wildcard
+
+Should notes and rests be values or exprs? Or some pattern-specific thing? Or
+patterns? (Which would basically echo the Expr Note definition, except with Pat
+instead of Expr.)
+
+- E.Note: Since we're evaluating the given Expr, this might make sense; however,
+  the user will be providing a Breve Note, not an E.Note, in the pattern.
+- Expr: Easier to match, probably?
+- Pat implementation of Note: Makes the most sense; Pat version of Note. Will
+  need to add parsing for patterns though -- will be highly redundant.
