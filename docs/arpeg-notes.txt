@@ -1,3 +1,30 @@
+Arpeggio program:
+arpeggio = (\\ steps note ->
+    arp = map (\\ s -> transpose note s) steps;
+    return toSnippet(arp);)
+main = arpeggio([1, 4, 7], (D 4 qn))
+
+(assuming existence of map and transpose!)
+transpose = (\\ note step -> case note of (p o d) -> (p+step o d));
+is the simplest form, but not quite enough. Needs to handle rollover!
+
+raiseOctave = (\\ note delta -> case note of (p o d) -> (p o+delta d));
+pitchOf = (\\ note -> case note of (p _ _) -> p);
+transpose = (\\ note step ->
+    newNote = if (step >= 12)
+        then transpose(raiseOctave(note, 1), step-12)
+        else case note of (p o d) -> (p+step o d);
+    return if pitchOf(newNote) < pitchOf(note)
+        then raiseOctave(newNote, 1)
+        else newNote
+
+Still need a definition of map, which I think requires List functions.
+map = (\\ f list -> if list == [] then list else f(head(list)) : map(f, tail(list))
+map = (\\ f list -> case list of
+    [] -> []
+    [h:t] -> f(h) : map(f, t))
+Both are valid! Second one is nicer.
+
 breve, a little music DSL
 - base values: pitch classes, durations, numbers, booleans, lists (con-cells?)
 - Note: [pitch, duration]
