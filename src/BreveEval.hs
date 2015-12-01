@@ -12,6 +12,7 @@ import Text.Parsec (runParser)
 import Data.Maybe (fromMaybe, catMaybes)
 import Control.Monad (zipWithM, mplus, msum)
 import Data.List (intercalate)
+import Data.Monoid (mappend)
 
 type Music = E.Music E.Pitch
 
@@ -252,16 +253,20 @@ evalIf env c t f = case evalExpr env c of
     _ -> error "Breve is not 'truthy'; conditions must evaluate to bool."
 
 evalCase :: Env -> Val -> [(Pat, Expr)] -> Val
-evalCase env cond cases = matchCases env cond cases
-
-matchCases :: Env -> Val -> [(Pat, Expr)] -> Val
-matchCases env c cases = let menv = matchCase (fst $ head cases,c) in
-    case menv of
-        Just env' -> evalExpr (env' ++ env) (snd $ head cases)
-        Nothing -> error "Non-exhaustive patterns in case statement."
+evalCase env cond cases =
+    -- hlint iterated the following line a good 3-4 times before coming up with
+    -- this. Started with "map matchCase $ zip (map fst cases) (repeat c)"
+    let envs = map ((\ c -> curry matchCase c cond) . fst) cases
+        -- Take [Maybe Env] and [Expr], produce [Maybe (Expr, Env)]
+        evals = zipWith (\ m e -> fmap ((,) e) m) envs (map snd cases) in
+    case msum evals of
+        Just (expr, env') -> evalExpr (env' ++ env) expr
+        Nothing -> error "Non-exhaustive patterns in Breve case statement."
 
 matchCase :: (Pat, Val) -> Maybe Env
-matchCase pv = case pv of
+matchCase pv =
+    let joinEnv a b = (++) <$> a <*> b in
+    case pv of
     (Ppc p, Vp p') -> if p == p' then Just [] else Nothing
     (Pn n, Vn n') -> if n == n' then Just [] else Nothing
     (Pd d, Vd d') -> if d == d' then Just [] else Nothing
@@ -269,9 +274,13 @@ matchCase pv = case pv of
     (Pnote p o d, Ve (E.Prim (E.Note d' (p',o')))) ->
        concat <$> mapM matchCase [(p, Vp p'), (o, Vn $ toInteger o'), (d, Vd $ fromRational d')]
     (Prest d, Vr (E.Prim (E.Rest d'))) -> matchCase (d, Vd $ fromRational d')
-    -- TODO: Check Lengths!!
-    (Plist (l:ls), Vl (v:vs)) -> matchCase (l,v) `mplus` matchCase (Plist ls, Vl vs)
-    (Psnip (s:ss), Vs h t) -> matchCase (s,h) `mplus` matchCase (Psnip ss, t)
+    (Psplit a r, Vl (v:vs)) -> joinEnv (matchCase (a, v)) (matchCase (r, Vl vs))
+    (Plist (l:ls), Vl (v:vs)) ->
+        if length ls == length vs
+        then joinEnv (matchCase (l,v)) (matchCase (Plist ls, Vl vs))
+        else Nothing
+    (Plist [], Vl []) -> Just []
+    (Psnip (s:ss), Vs h t) -> joinEnv (matchCase (s,h)) (matchCase (Psnip ss, t))
     (Pvar s, v) -> Just [(s, v)]
     (Pwc, _) -> Just []
     _ -> Nothing
