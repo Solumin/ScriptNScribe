@@ -45,10 +45,16 @@ parse input = case runParser breveParser [] "input" input of
 -- parseEval :: String -> Val
 -- parseEval = eval . interp
 
-parseEval :: String -> Val
-parseEval source =
+parseEval :: String -> Env
+parseEval = eval [] . fst . parse
+
+run :: String -> Val
+run = runEnv []
+
+runEnv :: Env -> String -> Val
+runEnv env source =
     let (prog,_) = parse source in
-    fromMaybe (error "No main to evaluate!") (lookup "main" (eval [] prog))
+    fromMaybe (error "No main to evaluate!") (lookup "main" (eval env prog))
 
 toMusic :: Val -> Music
 toMusic (Ve n) = n
@@ -58,8 +64,7 @@ toMusic (Vo a b) = toMusic a E.:=: toMusic b
 toMusic v = error $ "Cannot create a music object from " ++ show v
 
 perform :: String -> IO()
--- perform = Euterpea.play . toMusic . eval . interp
-perform = Euterpea.play . toMusic . parseEval
+perform = Euterpea.play . toMusic . run
 
 -- ==========
 -- Interpret
