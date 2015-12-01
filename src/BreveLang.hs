@@ -242,8 +242,9 @@ parseLambda :: Parser Expr
 parseLambda = b_parens (Lambda <$> args <*> body)
     where
         args = b_resop "\\" *> manyTill b_identifier (b_resop "->")
-        body :: Parser Statement
-        body =  do
+        body = bodyExpr <|> bodyStmt
+        bodyExpr = Return <$> parseExpr -- sugar for e.g. (\ a b -> a + b)
+        bodyStmt = do
             bod <- manyTill (parseAssign <* option "" b_semi) (try $ lookAhead parseReturn)
             ret <- parseReturn <* option "" b_semi
             return (Seq (bod ++ [ret]))

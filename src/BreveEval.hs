@@ -145,9 +145,9 @@ instance Ord Val where
     a <= b = error $ unwords ["Cannot compare", show a, "and", show b]
 
 bindings :: Statement -> Env
-bindings (Seq ss) = map bind ss
-    where bind (Assign n e) = (n, e)
-          bind (Return e) = ("return", e)
+bindings (Seq ss) = foldl (flip $ (++) . bindings) [] ss
+bindings (Assign n e) = [(n, e)]
+bindings (Return e) = [("return", e)]
 
 eval :: Env -> Val
 eval env = evalBinding env "main"
@@ -226,10 +226,10 @@ subst env expr = let sE = subst env in
     _ -> expr
 
 evalIf :: Env -> Expr -> Expr -> Expr -> Val
-evalIf env c t f = case (evalExpr env c) of
+evalIf env c t f = case evalExpr env c of
     (Vb True) -> evalExpr env t
     (Vb False) -> evalExpr env f
-    _ -> error $ "Breve is not 'truthy'; conditions must evaluate to bool."
+    _ -> error "Breve is not 'truthy'; conditions must evaluate to bool."
 
 evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not v = case v of
