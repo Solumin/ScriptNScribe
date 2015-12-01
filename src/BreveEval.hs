@@ -15,7 +15,7 @@ import Data.List (intercalate)
 
 type Music = E.Music E.Pitch
 
-type Binding = (String, Expr)
+type Binding = (String, Val)
 type Env = [Binding]
 
 -- Takes source code and parses it to generate the AST and parse traces
@@ -26,9 +26,9 @@ parse input = case runParser breveParser [] "input" input of
 
 -- Takes source code and interprets it to generate all of the bindings in a
 -- program
-interp :: String -> Env
-interp input = let (prog,_) = parse input in
-    interpStatement [] prog
+-- interp :: String -> Env
+-- interp input = let (prog,_) = parse input in
+--     interpStatement [] prog
 
 -- Takes source code and turns it into a single musical phrase
 -- eval :: String -> Music
@@ -42,25 +42,32 @@ interp input = let (prog,_) = parse input in
 -- perform :: String -> IO()
 -- perform = Euterpea.play . eval
 
+-- parseEval :: String -> Val
+-- parseEval = eval . interp
+
 parseEval :: String -> Val
-parseEval = eval . interp
+parseEval source =
+    let (prog,_) = parse source in
+    fromMaybe (error "No main to evaluate!") (lookup "main" (eval [] prog))
 
 toMusic :: Val -> Music
 toMusic (Ve n) = n
 toMusic (Vr r) = r
 toMusic (Vs a b) = toMusic a E.:+: toMusic b
 toMusic (Vo a b) = toMusic a E.:=: toMusic b
+toMusic v = error $ "Cannot create a music object from " ++ show v
 
 perform :: String -> IO()
-perform = Euterpea.play . toMusic . eval . interp
+-- perform = Euterpea.play . toMusic . eval . interp
+perform = Euterpea.play . toMusic . parseEval
 
 -- ==========
 -- Interpret
 -- ==========
 
-interpStatement :: Env -> Statement -> Env
-interpStatement env (Seq ss) = foldl interpStatement env ss
-interpStatement env (Assign v e) = (v, e) : env
+-- interpStatement :: Env -> Statement -> Env
+-- interpStatement env (Seq ss) = foldl interpStatement env ss
+-- interpStatement env (Assign v e) = (v, e) : env
 
 -- interpExpr takes the environment and an expression and returns an interpreted
 -- expression.
@@ -145,16 +152,21 @@ instance Ord Val where
     (Vl a) <= (Vl b) = a <= b
     a <= b = error $ unwords ["Cannot compare", show a, "and", show b]
 
-bindings :: Statement -> Env
-bindings (Seq ss) = foldl (flip $ (++) . bindings) [] ss
-bindings (Assign n e) = [(n, e)]
-bindings (Return e) = [("return", e)]
+-- bindings :: Statement -> Env
+-- bindings (Seq ss) = foldl (flip $ (++) . bindings) [] ss
+-- bindings (Assign n e) = [(n, e)]
+-- bindings (Return e) = [("return", e)]
 
-eval :: Env -> Val
-eval env = evalBinding env "main"
+-- eval :: Env -> Val
+-- eval env = evalBinding env "main"
 
-evalBinding :: Env -> String -> Val
-evalBinding env name = evalExpr env $ fromMaybe (error $ shows name " is not defined.") (lookup name env)
+-- evalBinding :: Env -> String -> Val
+-- evalBinding env name = evalExpr env $ fromMaybe (error $ shows name " is not defined.") (lookup name env)
+
+eval :: Env -> Statement -> Env
+eval env (Seq ss) = foldl eval env ss
+eval env (Assign n e) = (n, evalExpr env e) : env
+eval env (Return e) = ("return", evalExpr env e) : env
 
 evalExpr :: Env -> Expr -> Val
 evalExpr env expr = let evalE = evalExpr env in
@@ -169,11 +181,11 @@ evalExpr env expr = let evalE = evalExpr env in
     (Rest d) -> rest (evalE d)
     (Snippet ss) -> snippet (map evalE ss)
     (List ls) -> Vl (map evalE ls)
-    (Var s) -> evalE (lookupVar env s)
-    (Lambda params body) -> evalFunc params body
-    (App name args) -> evalApp env name args
+    (Var s) -> lookupVar env s
+    -- (Lambda params body) -> evalFunc params body
+    -- (App name args) -> evalApp env name args
     (If c t f) -> evalIf env c t f
-    (Case c cases) -> evalCase env c cases
+    -- (Case c cases) -> evalCase env c cases
 
 note :: Val -> Val -> Val -> Val
 note (Vp p) o d = Ve $ E.note (valToDur d) (p, valToOct o)
@@ -202,30 +214,30 @@ snippet (v@(Vr _):vs) = case vs of
     _ -> Vs v (snippet vs)
 snippet (_:vs) = error "A snippet should only contain Note or Rest objects"
 
-lookupVar :: Env -> String -> Expr
+lookupVar :: Env -> String -> Val
 lookupVar env name = fromMaybe (error $ shows name " is undefined.") (lookup name env)
 
-evalFunc :: [String] -> Statement -> Val
-evalFunc params = Vf . FunDef params . bindings
+-- evalFunc :: [String] -> Statement -> Val
+-- evalFunc params = Vf . FunDef params . bindings
 
-evalApp :: Env -> String -> [Expr] -> Val
-evalApp env name args =
-    let (Lambda p s) = lookupVar env name
-        (Vf (FunDef params binds)) = evalFunc p s in
-    evalBinding (binds ++ zip params (map (subst env) args) ++ env) "return"
+-- evalApp :: Env -> String -> [Expr] -> Val
+-- evalApp env name args =
+--     let (Lambda p s) = lookupVar env name
+--         (Vf (FunDef params binds)) = evalFunc p s in
+--     evalBinding (binds ++ zip params (map (subst env) args) ++ env) "return"
 
 -- Substitutes any Vars with their expression
-subst :: Env -> Expr -> Expr
-subst env expr = let sE = subst env in
-    case expr of
-    (Var s) -> lookupVar env s
-    (UnOpExpr op e) -> UnOpExpr op (sE e)
-    (BinOpExpr op l r) -> BinOpExpr op (sE l) (sE r)
-    (Note p o d) -> Note (sE p) (sE o) (sE d)
-    (Rest d) -> Rest (sE d)
-    (Snippet ss) -> Snippet (map sE ss)
-    (List ls) -> List (map sE ls)
-    _ -> expr
+-- subst :: Env -> Expr -> Expr
+-- subst env expr = let sE = subst env in
+--     case expr of
+--     (Var s) -> lookupVar env s
+--     (UnOpExpr op e) -> UnOpExpr op (sE e)
+--     (BinOpExpr op l r) -> BinOpExpr op (sE l) (sE r)
+--     (Note p o d) -> Note (sE p) (sE o) (sE d)
+--     (Rest d) -> Rest (sE d)
+--     (Snippet ss) -> Snippet (map sE ss)
+--     (List ls) -> List (map sE ls)
+--     _ -> expr
 
 evalIf :: Env -> Expr -> Expr -> Expr -> Val
 evalIf env c t f = case evalExpr env c of
@@ -233,28 +245,28 @@ evalIf env c t f = case evalExpr env c of
     (Vb False) -> evalExpr env f
     _ -> error "Breve is not 'truthy'; conditions must evaluate to bool."
 
-evalCase :: Env -> Expr -> [(Pat, Expr)] -> Val
-evalCase env c cases = evalExpr env (matchCases (evalExpr env c) cases)
+-- evalCase :: Env -> Expr -> [(Pat, Expr)] -> Val
+-- evalCase env c cases = evalExpr env (matchCases (evalExpr env c) cases)
 
-matchCases :: Env -> Val -> [(Pat, Expr)] -> Val
-matchCases env c cases = let env' = matchCase (fst $ head cases,c) in
-    evalExpr (env' ++ env) (snd $ head cases)
+-- matchCases :: Env -> Val -> [(Pat, Expr)] -> Val
+-- matchCases env c cases = let env' = matchCase (fst $ head cases,c) in
+--     evalExpr (env' ++ env) (snd $ head cases)
 
-matchCase :: (Pat, Val) -> Maybe [(String, Val)]
-matchCase pv = case pv of
-    (Ppc p, Vp p') -> if p == p' then Just [] else Nothing
-    (Pn n, Vn n') -> if n == n' then Just [] else Nothing
-    (Pd d, Vd d') -> if d == d' then Just [] else Nothing
-    (Pb b, Vb b') -> if b == b' then Just [] else Nothing
-    (Pnote p o d, Ve (E.Prim (E.Note d' (p',o')))) ->
-       msum $ map matchCase [(p, Vp p'), (o, Vn $ toInteger o'), (d, Vd $ fromRational d')]
-    (Prest d, Vr (E.Prim (E.Rest d'))) -> matchCase (d, Vd $ fromRational d')
-    -- TODO: Check Lengths!!
-    (Plist (l:ls), Vl (v:vs)) -> matchCase (l,v) `mplus` matchCase (Plist ls, Vl vs)
-    (Psnip (s:ss), Vs h t) -> matchCase (s,h) `mplus` matchCase (Psnip ss, t)
-    (Pvar s, v) -> Just [(s, v)]
-    (Pwc, _) -> Just []
-    _ -> Nothing
+-- matchCase :: (Pat, Val) -> Maybe [(String, Val)]
+-- matchCase pv = case pv of
+--     (Ppc p, Vp p') -> if p == p' then Just [] else Nothing
+--     (Pn n, Vn n') -> if n == n' then Just [] else Nothing
+--     (Pd d, Vd d') -> if d == d' then Just [] else Nothing
+--     (Pb b, Vb b') -> if b == b' then Just [] else Nothing
+--     (Pnote p o d, Ve (E.Prim (E.Note d' (p',o')))) ->
+--        msum $ map matchCase [(p, Vp p'), (o, Vn $ toInteger o'), (d, Vd $ fromRational d')]
+--     (Prest d, Vr (E.Prim (E.Rest d'))) -> matchCase (d, Vd $ fromRational d')
+--     -- TODO: Check Lengths!!
+--     (Plist (l:ls), Vl (v:vs)) -> matchCase (l,v) `mplus` matchCase (Plist ls, Vl vs)
+--     (Psnip (s:ss), Vs h t) -> matchCase (s,h) `mplus` matchCase (Psnip ss, t)
+--     (Pvar s, v) -> Just [(s, v)]
+--     (Pwc, _) -> Just []
+--     _ -> Nothing
 
 evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not v = case v of
