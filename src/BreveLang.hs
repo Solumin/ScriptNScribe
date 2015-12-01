@@ -12,29 +12,47 @@ module BreveLang
 {-
 Breve:
 pitchclass ::= A | B ...
-octave ::= digit { digit }*
-note ::= ( pitchclass octave duration )
-rest ::= ( "rest" duration )
-snippet ::= '{' note {, rest }* '}'
-var ::= letter { letter | digit }*
-list = "[" expr[, expr]* "]"
+integer ::= (+|-) digit (digit)*
+float ::= (+|-) integer '.' digit (digit)*
+boolean ::= 'true' | 'false'
+note = '(' expr expr expr ')'
+rest ::= '(' "rest" expr ')'
+snippet ::= '{' expr (',' expr )* '}'
+identifier ::= (lowercase | _ ) (letter | digit | underscore)*
+var ::= identifier
+list = '[' expr{',' expr}* ']'
 
-expr ::= note | rest | list | snippet | expr duop expr
-statement ::= var = expr | var = snippet | statement {; statement}*
+expr ::= pitchclass
+       | interger | float | boolean
+       | note | rest
+       | snippet | list
+       | '(\' ident* '->' (expr | (assign* return) ')'
+       | identifier'('expr*')'
+       | 'if' expr 'then' expr 'else' expr
+       | 'case' expr 'of' (pattern '->' expr ';')
+
+assign ::= identifier = expr
+return ::= 'return' expr
+sequence ::= statement (';' statement)*
+statement ::= assign | return | sequence
+
+pattern ::= pitchclass
+          | integer
+          | float
+          | boolean
+          | '(' pattern pattern pattern ')'
+          | '(' 'rest' pattern ')'
+          | '[' pat (',' pat)* ']'
+          | '[' ']'
+          | '(' pat ':' pat (':' pat)* ')'
+          | '{' pat (',' pat)* '}'
+          | '{' '}'
+          | identifier
+          | '_'
 
 lineComment ::= --
 blockComment ::= {- ... -}
 
-Example program:
-snippet1 = {(d 4 qn), (fs 4 qn), (a 4 qn)};
-snippet2 = {(d 4 wn)} :=: [(fs 4 wn)] :=: [(a 4 wn)]
-main = snippet1 :+: {(r qn)} :+: snippet
-
-Output:
-(music) D major arpeggio in quarter notes, a beat of rest, D major chord
-(score)
-    (main) Treble cleff, with 3 quarter notes stacked: D F# A
-    (snippet 1) Treble cleff, with 3...
 -}
 import qualified Euterpea.Music.Note.Music as E
 import Data.List (intercalate)
@@ -149,7 +167,7 @@ breveDef = emptyDef { commentStart = "{-"
                     , nestedComments = True
                     , commentLine = "--"
                     , identStart = lower <|> char '_'
-                    , identLetter = alphaNum <|> char '_' -- <|> char '-'
+                    , identLetter = alphaNum <|> char '_'
                     , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , reservedNames = pitchClasses ++ keywords
@@ -169,10 +187,11 @@ TokenParser { identifier = b_identifier
             , semi = b_semi
             , commaSep = b_commaSep
             , whiteSpace = b_whitespace } = makeTokenParser breveDef
+
 -- The default semiSep1 uses sepBy, which expects something like "a, b, c".
 -- That's fine for lists, but we're processing semicolon-terminated statements.
 -- We expect the last statement to have a semicolon! So sepEndBy makes more
--- sense. (It optionally eats the last separator)
+-- sense. (The final separator *is* optional.)
 b_semiSep1 p = sepEndBy p b_semi
 
 breveParser :: Parser (Statement, Traces)
@@ -310,6 +329,10 @@ parseCase = Case <$> (b_reserved "case" *> parseExpr <* b_reserved "of")
                  <*> b_semiSep1 parsePats
     where parsePats = (,) <$> (parsePat <* b_resop "->") <*> parseExpr
 
+-- ===================
+-- Parsing Patterns
+-- ===================
+
 parsePat :: Parser Pat
 parsePat = try parsePatPC
        <|> try parsePatNum
@@ -369,7 +392,6 @@ getLoc :: Parser (Int,Int)
 getLoc = do
     pos <- getPosition
     let loc = (sourceLine pos, sourceColumn pos)
-    -- modifyState ((:) (e, loc)
     return loc
 
 addState :: Expr -> Parser ()
