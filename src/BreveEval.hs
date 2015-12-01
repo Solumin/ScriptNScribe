@@ -257,8 +257,8 @@ evalCase env cond cases =
     -- hlint iterated the following line a good 3-4 times before coming up with
     -- this. Started with "map matchCase $ zip (map fst cases) (repeat c)"
     let envs = map ((\ c -> curry matchCase c cond) . fst) cases
-        -- Take [Maybe Env] and [Expr], produce [Maybe (Expr, Env)]
-        evals = zipWith (\ m e -> fmap ((,) e) m) envs (map snd cases) in
+        -- Take [Maybe Env] and [(Pat, Expr)], produce [Maybe (Expr, Env)]
+        evals = zipWith (\ m p -> fmap ((,) (snd p)) m) envs cases in
     case msum evals of
         Just (expr, env') -> evalExpr (env' ++ env) expr
         Nothing -> error "Non-exhaustive patterns in Breve case statement."
