@@ -131,6 +131,8 @@ data Pat =
       -- Variables
     | Pvar String
     | Pwc -- wildcard
+      -- Splitting
+    | Psplit Pat Pat -- (:) for splitting list elements off
     deriving (Show, Eq)
 
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
@@ -314,6 +316,7 @@ parsePat = try parsePatPC
        <|> try parsePatBool
        <|> try parsePatNote
        <|> try parsePatRest
+       <|> try parsePatSplit
        <|> parsePatList
        <|> parsePatSnippet
        <|> try parsePatWC
@@ -341,6 +344,10 @@ parsePatNote = b_parens (Pnote <$> parsePat <*> parsePat <*> parsePat)
 
 parsePatRest :: Parser Pat
 parsePatRest = Prest <$> b_parens (b_reserved "rest" *> parsePat)
+
+parsePatSplit :: Parser Pat
+parsePatSplit = b_parens (chainr1 term (b_resop ":" *> return Psplit))
+    where term = parsePat
 
 parsePatList :: Parser Pat
 parsePatList = Plist <$> b_brackets (b_commaSep parsePat)
