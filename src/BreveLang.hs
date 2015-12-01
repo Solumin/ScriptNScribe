@@ -143,7 +143,7 @@ breveDef = emptyDef { commentStart = "{-"
                     , nestedComments = True
                     , commentLine = "--"
                     , identStart = lower <|> char '_'
-                    , identLetter = alphaNum <|> char '_' <|> char '-'
+                    , identLetter = alphaNum <|> char '_' -- <|> char '-'
                     , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , reservedNames = pitchClasses ++ keywords
