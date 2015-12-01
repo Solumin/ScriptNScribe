@@ -88,6 +88,7 @@ data BinOp =
       SeqOp | ParOp                     -- snippets
     | Add | Mult | Div | Sub            -- math
     | Eq | Neq | Lt | Lte | Gt | Gte    -- equality
+    | Cons | Cat                        -- list
     deriving (Eq)
 instance Show BinOp where
     show SeqOp = ":+:"
@@ -102,6 +103,8 @@ instance Show BinOp where
     show Lte = "<="
     show Gt = ">"
     show Gte = ">="
+    show Cons = ":"
+    show Cat = "++"
 
 data UnOp = Not | Neg deriving (Eq)
 instance Show UnOp where
@@ -135,6 +138,7 @@ keywords = ["rest", "true", "false", "if", "then", "else", "def", "return", "cas
 
 mathOps = map show [Add, Sub, Mult, Div]
 boolOps = map show [Eq, Neq, Lt, Lte, Gt, Gte]
+listOps = map show [Cons, Cat]
 catOps = map show [SeqOp, ParOp] ++ ["=", "\\", "->"]
 
 breveDef :: LanguageDef st
@@ -147,7 +151,7 @@ breveDef = emptyDef { commentStart = "{-"
                     , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , reservedNames = pitchClasses ++ keywords
-                    , reservedOpNames = catOps ++ mathOps ++ boolOps
+                    , reservedOpNames = catOps ++ mathOps ++ boolOps ++ listOps
                     , caseSensitive = True
                     }
 
@@ -209,6 +213,7 @@ opTable = [ [ inf ParOp AssocRight, inf SeqOp AssocRight]
           , [ pref Not, pref Neg]
           , [ math Mult, math Div]
           , [ math Add, math Sub]
+          , [ inf Cons AssocRight, inf Cat AssocRight]
           , [ bool Lt, bool Lte, bool Gt, bool Gte]
           , [ bool Eq, bool Neq]
           ]

@@ -340,4 +340,8 @@ evalBinOp Lte a b = Vb (a <= b)
 evalBinOp Gt  a b = Vb (a >  b)
 evalBinOp Gte a b = Vb (a >= b)
 
+evalBinOp Cons a (Vl l) = Vl (a : l)
+
+evalBinOp Cat (Vl a) (Vl b) = Vl (a ++ b)
+
 evalBinOp o a b = error $ unwords ["Op", show o, "is undefined for args", show a, show b]
