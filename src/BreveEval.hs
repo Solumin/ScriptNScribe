@@ -9,100 +9,26 @@ import qualified Euterpea (play, line)
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
+import Control.Monad (zipWithM, mplus, msum)
 import Data.List (intercalate)
+import Data.Monoid (mappend)
 
 type Music = E.Music E.Pitch
 
-type Binding = (String, Expr)
+type Binding = (String, Val)
 type Env = [Binding]
 
--- Takes source code and parses it to generate the AST and parse traces
-parse :: String -> (Statement, Traces)
-parse input = case runParser breveParser [] "input" input of
-    Left err -> error (show err)
-    Right st -> st
-
--- Takes source code and interprets it to generate all of the bindings in a
--- program
-interp :: String -> Env
-interp input = let (prog,_) = parse input in
-    interpStatement [] prog
-
--- Takes source code and turns it into a single musical phrase
--- eval :: String -> Music
--- eval input =
---     let env = interp input in
---     case lookup "main" env of
---         Just main -> evalMain env main
---         Nothing -> error "No main in program."
-
--- Takes source code and performs the music described in it
--- perform :: String -> IO()
--- perform = Euterpea.play . eval
-
-parseEval :: String -> Val
-parseEval = eval . interp
-
-toMusic :: Val -> Music
-toMusic (Ve n) = n
-toMusic (Vr r) = r
-toMusic (Vs a b) = toMusic a E.:+: toMusic b
-toMusic (Vo a b) = toMusic a E.:=: toMusic b
-
-perform :: String -> IO()
-perform = Euterpea.play . toMusic . eval . interp
-
--- ==========
--- Interpret
--- ==========
-
-interpStatement :: Env -> Statement -> Env
-interpStatement env (Seq ss) = foldl interpStatement env ss
-interpStatement env (Assign v e) = (v, e) : env
-
--- interpExpr takes the environment and an expression and returns an interpreted
--- expression.
--- For basic Expr, like PitchClass, N, etc., this just returns the Expr.
--- Op expressions interpret their arguments, returning the same op.
--- Notes, Rests, Snippets and Lists have their components interpreted. Type
--- checking will be handled by smart constructors in the eval step.
--- Var expr are looked up in the environment, and throw an error if the
--- expression isn't found.
-{-
-interpExpr :: Env -> Expr -> Expr
-interpExpr env p@(PitchClass _ _) = p
-interpExpr env n@(N _ _) = n
-interpExpr env d@(D _ _) = d
-interpExpr env b@(B _) = b
-interpExpr env (UnOpExpr op e) = UnOpExpr op (interpExpr env e)
-interpExpr env (BinOpExpr op e1 e2) =
-    BinOpExpr op (interpExpr env e1) (interpExpr env e2)
-interpExpr env (Note p o d) =
-    Note (interpExpr env p) (interpExpr env o) (interpExpr env d)
-interpExpr env (Rest d) = Rest (interpExpr env d)
-interpExpr env (Snippet ss) = Snippet (map (interpExpr env) ss)
-interpExpr env v@(Var _) = v
-interpExpr env (List ls) = List (map (interpExpr env) ls)
-interpExpr env l@(Lambda _ _) = l
-interpExpr env (App s es) = App s (map (interpExpr env) es)
--}
-
--- ==========
--- Evaluating
--- ==========
-
--- Attempt 4: Val again (repeat attempt 1, really)
-
 data Val = Vp E.PitchClass
-         | Vn Integer | Vd Double
+         | Vn Integer
+         | Vd Double
          | Vb Bool
-         | Ve Music | Vr Music -- Note and Rest, respectively
-         | Vs Val Val -- represents :+: and Snippet
-         | Vo Val Val -- represents the :=: operator for rest, notes and snippets
-         | Vl [Val]      -- Expr List
-         | Vf FunDef
-data FunDef = FunDef [String] Env -- lambda eval'd
+         | Ve Music     -- Note
+         | Vr Music     -- Rest
+         | Vs Val Val   -- represents :+: (and therefore Snippet)
+         | Vo Val Val   -- represents the :=: operator for rest, notes and snippets
+         | Vl [Val]     -- Expr List
+         | Vf Expr      -- Lambda
 
 instance Show Val where
     show (Vp p) = "Val_PitchClass <" ++ shows p ">"
@@ -114,7 +40,7 @@ instance Show Val where
     show (Vs a b) = '(' : shows a " :+: " ++ shows b ")"
     show (Vo a b) = '(' : shows a " :=: " ++ shows b ")"
     show (Vl l) = "Vlist [" ++ intercalate ", " (map show l) ++ "]"
-    show (Vf (FunDef args bins)) = "Function <" ++ shows args ">"
+    show (Vf l) = show l
 
 instance Eq Val where
     (Vp a) == (Vp b) = a == b
@@ -144,16 +70,54 @@ instance Ord Val where
     (Vl a) <= (Vl b) = a <= b
     a <= b = error $ unwords ["Cannot compare", show a, "and", show b]
 
-bindings :: Statement -> Env
-bindings (Seq ss) = map bind ss
-    where bind (Assign n e) = (n, e)
-          bind (Return e) = ("return", e)
+-- Takes source code and parses it to generate the AST and parse traces
+parse :: String -> (Statement, Traces)
+parse input = case runParser breveParser [] "input" input of
+    Left err -> error (show err)
+    Right st -> st
 
-eval :: Env -> Val
-eval env = evalBinding env "main"
+-- Produce the Environment defined by a program.
+-- TODO Load the Prelude environment
+parseEval :: String -> Env
+parseEval = eval [] . fst . parse
 
-evalBinding :: Env -> String -> Val
-evalBinding env name = evalExpr env $ fromMaybe (error $ shows name " is not defined.") (lookup name env)
+-- Takes source code and evaluates the "main" expression.
+run :: String -> Val
+run = runEnv []
+
+-- Same as run, but with a given initial environment.
+runEnv :: Env -> String -> Val
+runEnv env source =
+    let (prog,_) = parse source in
+    fromMaybe (error "No main to evaluate!") (lookup "main" (eval env prog))
+
+-- Transforms a Val into a Music object that can be played.
+toMusic :: Val -> Music
+toMusic (Ve n) = n
+toMusic (Vr r) = r
+toMusic (Vs a b) = toMusic a E.:+: toMusic b
+toMusic (Vo a b) = toMusic a E.:=: toMusic b
+toMusic v = error $ "Cannot create a music object from " ++ show v
+
+-- Performs the Music represented by the program.
+perform :: String -> IO()
+perform = Euterpea.play . toMusic . run
+
+-- ==========
+-- Evaluating
+-- ==========
+
+-- Given an environment, evaluate the given statement.
+-- Assign statements create a binding between the name and the evaluated
+-- expression.
+-- Return statements do the same with the name "return" -- which means there
+-- must only be one per function, at the end of the function body!
+-- Sequence statements are evaluated top-to-bottom, building the environment as
+-- each component statement is evaluated.
+eval :: Env -> Statement -> Env
+eval env (Seq ss) = foldl eval env ss
+eval env (Assign n e) = (n, evalExpr env e) : env
+eval env (Return e) = ("return", evalExpr env e) : env
 
 evalExpr :: Env -> Expr -> Val
 evalExpr env expr = let evalE = evalExpr env in
@@ -168,10 +132,11 @@ evalExpr env expr = let evalE = evalExpr env in
     (Rest d) -> rest (evalE d)
     (Snippet ss) -> snippet (map evalE ss)
     (List ls) -> Vl (map evalE ls)
-    (Var s) -> evalE (lookupVar env s)
-    (Lambda params body) -> evalFunc params body
-    (App name args) -> evalApp env name args
+    (Var s) -> lookupVar env s
+    l@(Lambda _ _) -> Vf l
+    (App name args) -> evalApp env name (map evalE args)
     (If c t f) -> evalIf env c t f
+    (Case cond cases) -> evalCase env (evalE cond) cases
 
 note :: Val -> Val -> Val -> Val
 note (Vp p) o d = Ve $ E.note (valToDur d) (p, valToOct o)
@@ -200,36 +165,53 @@ snippet (v@(Vr _):vs) = case vs of
     _ -> Vs v (snippet vs)
 snippet (_:vs) = error "A snippet should only contain Note or Rest objects"
 
-lookupVar :: Env -> String -> Expr
-lookupVar env name = fromMaybe (error $ shows name " is undefined.") (lookup name env)
+lookupVar :: Env -> String -> Val
+lookupVar env name = fromMaybe (error $ shows name " is undefined." ++ show env) (lookup name env)
 
-evalFunc :: [String] -> Statement -> Val
-evalFunc params = Vf . FunDef params . bindings
-
-evalApp :: Env -> String -> [Expr] -> Val
+evalApp :: Env -> String -> [Val] -> Val
 evalApp env name args =
-    let (Lambda p s) = lookupVar env name
-        (Vf (FunDef params binds)) = evalFunc p s in
-    evalBinding (binds ++ zip params (map (subst env) args) ++ env) "return"
-
--- Substitutes any Vars with their expression
-subst :: Env -> Expr -> Expr
-subst env expr = let sE = subst env in
-    case expr of
-    (Var s) -> lookupVar env s
-    (UnOpExpr op e) -> UnOpExpr op (sE e)
-    (BinOpExpr op l r) -> BinOpExpr op (sE l) (sE r)
-    (Note p o d) -> Note (sE p) (sE o) (sE d)
-    (Rest d) -> Rest (sE d)
-    (Snippet ss) -> Snippet (map sE ss)
-    (List ls) -> List (map sE ls)
-    _ -> expr
+    let (Vf (Lambda params body)) = lookupVar env name
+        res = eval (zip params args ++ env) body in
+    fromMaybe (error $ "Function " ++ name ++ " has no return statement!") (lookup "return" res)
 
 evalIf :: Env -> Expr -> Expr -> Expr -> Val
-evalIf env c t f = case (evalExpr env c) of
+evalIf env c t f = case evalExpr env c of
     (Vb True) -> evalExpr env t
     (Vb False) -> evalExpr env f
-    _ -> error $ "Breve is not 'truthy'; conditions must evaluate to bool."
+    _ -> error "Breve is not 'truthy'; conditions must evaluate to bool."
+
+evalCase :: Env -> Val -> [(Pat, Expr)] -> Val
+evalCase env cond cases =
+    -- hlint iterated the following line a good 3-4 times before coming up with
+    -- this. Started with "map matchCase $ zip (map fst cases) (repeat c)"
+    let envs = map ((\ c -> curry matchCase c cond) . fst) cases
+        -- Take [Maybe Env] and [(Pat, Expr)], produce [Maybe (Expr, Env)]
+        evals = zipWith (\ m p -> fmap ((,) (snd p)) m) envs cases in
+    case msum evals of
+        Just (expr, env') -> evalExpr (env' ++ env) expr
+        Nothing -> error "Non-exhaustive patterns in Breve case statement."
+
+matchCase :: (Pat, Val) -> Maybe Env
+matchCase pv =
+    let joinEnv a b = (++) <$> a <*> b in
+    case pv of
+    (Ppc p, Vp p') -> if p == p' then Just [] else Nothing
+    (Pn n, Vn n') -> if n == n' then Just [] else Nothing
+    (Pd d, Vd d') -> if d == d' then Just [] else Nothing
+    (Pb b, Vb b') -> if b == b' then Just [] else Nothing
+    (Pnote p o d, Ve (E.Prim (E.Note d' (p',o')))) ->
+       concat <$> mapM matchCase [(p, Vp p'), (o, Vn $ toInteger o'), (d, Vd $ fromRational d')]
+    (Prest d, Vr (E.Prim (E.Rest d'))) -> matchCase (d, Vd $ fromRational d')
+    (Psplit a r, Vl (v:vs)) -> joinEnv (matchCase (a, v)) (matchCase (r, Vl vs))
+    (Plist (l:ls), Vl (v:vs)) ->
+        if length ls == length vs
+        then joinEnv (matchCase (l,v)) (matchCase (Plist ls, Vl vs))
+        else Nothing
+    (Plist [], Vl []) -> Just []
+    (Psnip (s:ss), Vs h t) -> joinEnv (matchCase (s,h)) (matchCase (Psnip ss, t))
+    (Pvar s, v) -> Just [(s, v)]
+    (Pwc, _) -> Just []
+    _ -> Nothing
 
 evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not v = case v of
@@ -294,5 +276,9 @@ evalBinOp Lt  a b = Vb (a <  b)
 evalBinOp Lte a b = Vb (a <= b)
 evalBinOp Gt  a b = Vb (a >  b)
 evalBinOp Gte a b = Vb (a >= b)
+
+evalBinOp Cons a (Vl l) = Vl (a : l)
+
+evalBinOp Cat (Vl a) (Vl b) = Vl (a ++ b)
 
 evalBinOp o a b = error $ unwords ["Op", show o, "is undefined for args", show a, show b]
