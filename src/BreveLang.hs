@@ -114,6 +114,22 @@ instance Show Statement where
     show (Seq ss) = unlines (map show ss)
     show (Return e) = "return " ++ shows e ";"
 
+data Pat =
+    -- Constants
+      Ppc E.PitchClass
+    | Pn Integer
+    | Pd Double
+    | Pb Bool
+      -- Structures
+    | Pnote Pat Pat Pat
+    | Prest Pat
+    | Plist [Pat]
+    | Psnip [Pat]
+      -- Variables
+    | Pvar String
+    | Pwc -- wildcard
+    deriving (Show, Eq)
+
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
 keywords = ["rest", "true", "false", "if", "then", "else", "def", "return", "case", "of"]
 
@@ -278,9 +294,55 @@ parseIf = If <$> (b_reserved "if" *> parseExpr)
              <*> (b_reserved "else" *> parseExpr)
 
 parseCase :: Parser Expr
-parseCase = Case <$> (b_reserved "case" *> parseExpr)
-                 <*> (b_semiSep1 parsePats)
+parseCase = Case <$> (b_reserved "case" *> parseExpr <* b_reserved "of")
+                 <*> b_semiSep1 parsePats
     where parsePats = (,) <$> (parsePat <* b_resop "->") <*> parseExpr
+
+parsePat :: Parser Pat
+parsePat = try parsePatPC
+       <|> try parsePatNum
+       <|> try parsePatBool
+       <|> try parsePatNote
+       <|> try parsePatRest
+       <|> parsePatList
+       <|> parsePatSnippet
+       <|> try parsePatWC
+       <|> parsePatVar
+
+parsePatPC :: Parser Pat
+parsePatPC = Ppc . read <$> choice (map (try . b_symbol) pitchClasses)
+
+parsePatNum :: Parser Pat
+parsePatNum = do
+    sign <- optionMaybe (oneOf "-+")
+    p <- b_number
+    return $ case p of
+        Left i -> Pn (signed sign i)
+        Right d -> Pd (signed sign d)
+    where signed s = (*) (maybe 1 (const (-1)) s)
+
+parsePatBool :: Parser Pat
+parsePatBool = do
+    (B b) <- parseBool
+    return (Pb b)
+
+parsePatNote :: Parser Pat
+parsePatNote = b_parens (Pnote <$> parsePat <*> parsePat <*> parsePat)
+
+parsePatRest :: Parser Pat
+parsePatRest = Prest <$> b_parens (b_reserved "rest" *> parsePat)
+
+parsePatList :: Parser Pat
+parsePatList = Plist <$> b_brackets (b_commaSep parsePat)
+
+parsePatSnippet :: Parser Pat
+parsePatSnippet = Psnip <$> b_braces (b_commaSep parsePat)
+
+parsePatWC :: Parser Pat
+parsePatWC = Pwc <$ b_reserved "_"
+
+parsePatVar :: Parser Pat
+parsePatVar = Pvar <$> b_identifier
 
 -- ============
 -- Utility
