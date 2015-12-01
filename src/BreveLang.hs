@@ -286,8 +286,12 @@ parseNum = do
     return res
     where signed s = (*) (maybe 1 (const (-1)) s)
 
+-- TODO this is terribly hacky, but it's the easiest way to make sure x (y + z)
+-- is treated as 2 expressions, not as a single function application! (note the
+-- whitespace!!)
 parseApp :: Parser Expr
-parseApp = App <$> b_identifier <*> b_parens (b_commaSep parseExpr)
+parseApp = App <$> (ident <* notFollowedBy b_whitespace) <*> b_parens (b_commaSep parseExpr)
+    where ident = (:) <$> (lower <|> char '_') <*> many (alphaNum <|> char '_' <|> char '-')
 
 parseIf :: Parser Expr
 parseIf = If <$> (b_reserved "if" *> parseExpr)
