@@ -10,6 +10,7 @@ import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
 import Data.Maybe (fromMaybe)
+import Control.Monad (zipWithM, mplus, msum)
 import Data.List (intercalate)
 
 type Music = E.Music E.Pitch
@@ -172,6 +173,7 @@ evalExpr env expr = let evalE = evalExpr env in
     (Lambda params body) -> evalFunc params body
     (App name args) -> evalApp env name args
     (If c t f) -> evalIf env c t f
+    (Case c cases) -> evalCase env c cases
 
 note :: Val -> Val -> Val -> Val
 note (Vp p) o d = Ve $ E.note (valToDur d) (p, valToOct o)
@@ -230,6 +232,29 @@ evalIf env c t f = case evalExpr env c of
     (Vb True) -> evalExpr env t
     (Vb False) -> evalExpr env f
     _ -> error "Breve is not 'truthy'; conditions must evaluate to bool."
+
+evalCase :: Env -> Expr -> [(Pat, Expr)] -> Val
+evalCase env c cases = evalExpr env (matchCases (evalExpr env c) cases)
+
+matchCases :: Env -> Val -> [(Pat, Expr)] -> Val
+matchCases env c cases = let env' = matchCase (fst $ head cases,c) in
+    evalExpr (env' ++ env) (snd $ head cases)
+
+matchCase :: (Pat, Val) -> Maybe [(String, Val)]
+matchCase pv = case pv of
+    (Ppc p, Vp p') -> if p == p' then Just [] else Nothing
+    (Pn n, Vn n') -> if n == n' then Just [] else Nothing
+    (Pd d, Vd d') -> if d == d' then Just [] else Nothing
+    (Pb b, Vb b') -> if b == b' then Just [] else Nothing
+    (Pnote p o d, Ve (E.Prim (E.Note d' (p',o')))) ->
+       msum $ map matchCase [(p, Vp p'), (o, Vn $ toInteger o'), (d, Vd $ fromRational d')]
+    (Prest d, Vr (E.Prim (E.Rest d'))) -> matchCase (d, Vd $ fromRational d')
+    -- TODO: Check Lengths!!
+    (Plist (l:ls), Vl (v:vs)) -> matchCase (l,v) `mplus` matchCase (Plist ls, Vl vs)
+    (Psnip (s:ss), Vs h t) -> matchCase (s,h) `mplus` matchCase (Psnip ss, t)
+    (Pvar s, v) -> Just [(s, v)]
+    (Pwc, _) -> Just []
+    _ -> Nothing
 
 evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not v = case v of
