@@ -81,7 +81,8 @@ instance Show Expr where
     show (Lambda v s) = '(':'\\': unwords v ++ " -> " ++ shows s ")"
     show (App n as) = n ++ "(" ++ intercalate ", " (map show as) ++ ")"
     show (If c t f) = "if " ++ shows c " then " ++ shows t " else " ++ show f
-    show (Case e ps) = "case " ++ shows e " of " ++ map (\(p,r) -> show p ++ " -> " ++ show r) ps
+    show (Case e ps) = "case " ++ shows e " of " ++
+                       intercalate "; " (map (\(p,r) -> '(' : show p ++ " -> " ++ shows r ")") ps)
 
 data BinOp =
       SeqOp | ParOp                     -- snippets
@@ -232,8 +233,7 @@ parseLambda = b_parens (Lambda <$> args <*> body)
             return (Seq (bod ++ [ret]))
 
 parseSnippet :: Parser Expr
-parseSnippet = Snippet <$> b_braces (b_commaSep (try parseNote <|> try parseRest <?> msg))
-    where msg = "Note or Rest"
+parseSnippet = Snippet <$> b_braces (b_commaSep parseExpr)
 
 parseVar :: Parser Expr
 parseVar = Var <$> b_identifier
