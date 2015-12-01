@@ -9,7 +9,7 @@ import qualified Euterpea (play, line)
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
 import Control.Monad (zipWithM, mplus, msum)
 import Data.List (intercalate)
 
@@ -109,8 +109,8 @@ data Val = Vp E.PitchClass
          | Vs Val Val -- represents :+: and Snippet
          | Vo Val Val -- represents the :=: operator for rest, notes and snippets
          | Vl [Val]      -- Expr List
-         | Vf FunDef
-data FunDef = FunDef [String] Env -- lambda eval'd
+         | Vf Expr --FunDef
+-- data FunDef = FunDef [String] Statement -- lambda eval'd
 
 instance Show Val where
     show (Vp p) = "Val_PitchClass <" ++ shows p ">"
@@ -122,7 +122,8 @@ instance Show Val where
     show (Vs a b) = '(' : shows a " :+: " ++ shows b ")"
     show (Vo a b) = '(' : shows a " :=: " ++ shows b ")"
     show (Vl l) = "Vlist [" ++ intercalate ", " (map show l) ++ "]"
-    show (Vf (FunDef args bins)) = "Function <" ++ shows args ">"
+    show (Vf l) = show l
+    -- show (Vf (FunDef args bins)) = "Function <" ++ shows args ">"
 
 instance Eq Val where
     (Vp a) == (Vp b) = a == b
@@ -182,10 +183,10 @@ evalExpr env expr = let evalE = evalExpr env in
     (Snippet ss) -> snippet (map evalE ss)
     (List ls) -> Vl (map evalE ls)
     (Var s) -> lookupVar env s
-    -- (Lambda params body) -> evalFunc params body
-    -- (App name args) -> evalApp env name args
+    l@(Lambda params body) -> Vf l -- evalFunc env params body
+    (App name args) -> evalApp env name (map evalE args)
     (If c t f) -> evalIf env c t f
-    -- (Case c cases) -> evalCase env c cases
+    (Case cond cases) -> evalCase env (evalE cond) cases
 
 note :: Val -> Val -> Val -> Val
 note (Vp p) o d = Ve $ E.note (valToDur d) (p, valToOct o)
@@ -215,16 +216,16 @@ snippet (v@(Vr _):vs) = case vs of
 snippet (_:vs) = error "A snippet should only contain Note or Rest objects"
 
 lookupVar :: Env -> String -> Val
-lookupVar env name = fromMaybe (error $ shows name " is undefined.") (lookup name env)
+lookupVar env name = fromMaybe (error $ shows name " is undefined." ++ show env) (lookup name env)
 
--- evalFunc :: [String] -> Statement -> Val
--- evalFunc params = Vf . FunDef params . bindings
+-- evalFunc :: Env -> [String] -> Statement -> Val
+-- evalFunc env params = Vf . FunDef params
 
--- evalApp :: Env -> String -> [Expr] -> Val
--- evalApp env name args =
---     let (Lambda p s) = lookupVar env name
---         (Vf (FunDef params binds)) = evalFunc p s in
---     evalBinding (binds ++ zip params (map (subst env) args) ++ env) "return"
+evalApp :: Env -> String -> [Val] -> Val
+evalApp env name args =
+    let (Vf (Lambda params body)) = lookupVar env name
+        res = eval (zip params args ++ env) body in
+    fromMaybe (error $ "Function " ++ name ++ " has no return statement!") (lookup "return" res)
 
 -- Substitutes any Vars with their expression
 -- subst :: Env -> Expr -> Expr
@@ -245,28 +246,30 @@ evalIf env c t f = case evalExpr env c of
     (Vb False) -> evalExpr env f
     _ -> error "Breve is not 'truthy'; conditions must evaluate to bool."
 
--- evalCase :: Env -> Expr -> [(Pat, Expr)] -> Val
--- evalCase env c cases = evalExpr env (matchCases (evalExpr env c) cases)
+evalCase :: Env -> Val -> [(Pat, Expr)] -> Val
+evalCase env cond cases = matchCases env cond cases
 
--- matchCases :: Env -> Val -> [(Pat, Expr)] -> Val
--- matchCases env c cases = let env' = matchCase (fst $ head cases,c) in
---     evalExpr (env' ++ env) (snd $ head cases)
+matchCases :: Env -> Val -> [(Pat, Expr)] -> Val
+matchCases env c cases = let menv = matchCase (fst $ head cases,c) in
+    case menv of
+        Just env' -> evalExpr (env' ++ env) (snd $ head cases)
+        Nothing -> error "Non-exhaustive patterns in case statement."
 
--- matchCase :: (Pat, Val) -> Maybe [(String, Val)]
--- matchCase pv = case pv of
---     (Ppc p, Vp p') -> if p == p' then Just [] else Nothing
---     (Pn n, Vn n') -> if n == n' then Just [] else Nothing
---     (Pd d, Vd d') -> if d == d' then Just [] else Nothing
---     (Pb b, Vb b') -> if b == b' then Just [] else Nothing
---     (Pnote p o d, Ve (E.Prim (E.Note d' (p',o')))) ->
---        msum $ map matchCase [(p, Vp p'), (o, Vn $ toInteger o'), (d, Vd $ fromRational d')]
---     (Prest d, Vr (E.Prim (E.Rest d'))) -> matchCase (d, Vd $ fromRational d')
---     -- TODO: Check Lengths!!
---     (Plist (l:ls), Vl (v:vs)) -> matchCase (l,v) `mplus` matchCase (Plist ls, Vl vs)
---     (Psnip (s:ss), Vs h t) -> matchCase (s,h) `mplus` matchCase (Psnip ss, t)
---     (Pvar s, v) -> Just [(s, v)]
---     (Pwc, _) -> Just []
---     _ -> Nothing
+matchCase :: (Pat, Val) -> Maybe Env
+matchCase pv = case pv of
+    (Ppc p, Vp p') -> if p == p' then Just [] else Nothing
+    (Pn n, Vn n') -> if n == n' then Just [] else Nothing
+    (Pd d, Vd d') -> if d == d' then Just [] else Nothing
+    (Pb b, Vb b') -> if b == b' then Just [] else Nothing
+    (Pnote p o d, Ve (E.Prim (E.Note d' (p',o')))) ->
+       concat <$> mapM matchCase [(p, Vp p'), (o, Vn $ toInteger o'), (d, Vd $ fromRational d')]
+    (Prest d, Vr (E.Prim (E.Rest d'))) -> matchCase (d, Vd $ fromRational d')
+    -- TODO: Check Lengths!!
+    (Plist (l:ls), Vl (v:vs)) -> matchCase (l,v) `mplus` matchCase (Plist ls, Vl vs)
+    (Psnip (s:ss), Vs h t) -> matchCase (s,h) `mplus` matchCase (Psnip ss, t)
+    (Pvar s, v) -> Just [(s, v)]
+    (Pwc, _) -> Just []
+    _ -> Nothing
 
 evalUnOp :: UnOp -> Val -> Val
 evalUnOp Not v = case v of
