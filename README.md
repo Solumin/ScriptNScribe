@@ -3,6 +3,7 @@
 ## Task List:
 
 1. Tracing
+1. Better error messages for parsing AND evaluating!
 1. Tests for Parser and Evaluation. (Probably can't use quickcheck for this,
    unfortunately.)
 1. "Unparsing" for generating programs after tracing.
