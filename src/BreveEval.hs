@@ -5,6 +5,7 @@ module BreveEval
     -- ) where
     where
 import BreveLang
+import BrevePrelude
 import qualified Euterpea (play, line)
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
@@ -83,7 +84,7 @@ parseEval = eval [] . fst . parse
 
 -- Takes source code and evaluates the "main" expression.
 run :: String -> Val
-run = runEnv []
+run = runEnv (parseEval prelude)
 
 -- Same as run, but with a given initial environment.
 runEnv :: Env -> String -> Val
