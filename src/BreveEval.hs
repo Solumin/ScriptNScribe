@@ -211,6 +211,7 @@ matchCase pv =
     (Plist [], Vl []) -> Just []
     (Psnip (s:ss), Vs h t) -> joinEnv (matchCase (s,h)) (matchCase (Psnip ss, t))
     (Pvar s, v) -> Just [(s, v)]
+    (Ppat s p, v) -> joinEnv (Just [(s, v)]) (matchCase (p,v))
     (Pwc, _) -> Just []
     _ -> Nothing
 

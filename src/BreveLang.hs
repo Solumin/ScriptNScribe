@@ -149,6 +149,7 @@ data Pat =
       -- Variables
     | Pvar String
     | Pwc -- wildcard
+    | Ppat String Pat -- at pattern, e.g. l@(x:xs)
       -- Splitting
     | Psplit Pat Pat -- (:) for splitting list elements off
     deriving (Show, Eq)
@@ -159,7 +160,7 @@ keywords = ["rest", "true", "false", "if", "then", "else", "def", "return", "cas
 mathOps = map show [Add, Sub, Mult, Div]
 boolOps = map show [Eq, Neq, Lt, Lte, Gt, Gte]
 listOps = map show [Cons, Cat]
-catOps = map show [SeqOp, ParOp] ++ ["=", "\\", "->"]
+catOps = map show [SeqOp, ParOp] ++ ["=", "\\", "->", "@"]
 
 breveDef :: LanguageDef st
 breveDef = emptyDef { commentStart = "{-"
@@ -382,7 +383,13 @@ parsePatWC :: Parser Pat
 parsePatWC = Pwc <$ b_reserved "_"
 
 parsePatVar :: Parser Pat
-parsePatVar = Pvar <$> b_identifier
+parsePatVar = flip (maybe Pvar (flip Ppat)) <$> b_identifier <*> optionMaybe (b_resop "@" *> parsePat)
+-- parsePatVar = do
+--     name <- b_identifier
+--     at <- optionMaybe (b_resop "@" *> parsePat)
+--     return $ case at of
+--         Just pat -> Ppat name pat
+--         Nothing -> Pvar name
 
 -- ============
 -- Utility
