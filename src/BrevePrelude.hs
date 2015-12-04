@@ -61,9 +61,9 @@ sum = (\ ls -> foldl((\ s i -> s + i),0,ls));
 
 product = (\ ls -> foldl((\ p i -> p * i),1,ls));
 
-head = (\ ls -> case ls of (x:_) -> x);
+head = (\ (x:_) -> x);
 
-tail = (\ ls -> case ls of (_:xs) -> xs);
+tail = (\ (_:xs) -> xs);
 
 repeat = (\ len item -> if len <= 0 then [] else item : repeat(len-1, item));
 
@@ -103,14 +103,14 @@ chord = (\ ls -> case ls of
         [] -> (rest 0);
     );
 
-changeOctave = (\ note delta -> case note of (p o d) -> (p o+delta d));
+changeOctave = (\ (p o d) delta -> (p o+delta d));
 
-pitchOf = (\ note -> case note of (p _ _) -> p);
+pitchOf = (\ (p _ _) -> p);
 
-transpose = (\ note step ->
+transpose = (\ note@(p o d) step ->
     newNote = if (step >= 12)
         then transpose(changeOctave(note, 1), step-12)
-        else case note of (p o d) -> (p+step o d);
+        else (p+step o d);
     return if pitchOf(newNote) < pitchOf(note)
         then changeOctave(newNote, 1)
         else newNote;
