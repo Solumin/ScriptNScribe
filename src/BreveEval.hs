@@ -80,17 +80,21 @@ parse input = case runParser breveParser [] "input" input of
 -- Produce the Environment defined by a program.
 -- TODO Load the Prelude environment
 parseEval :: String -> Env
-parseEval = eval [] . fst . parse
+parseEval = parseEvalEnv initEnv
+
+parseEvalEnv :: Env -> String -> Env
+parseEvalEnv env = eval env . fst . parse
+
+initEnv = parseEvalEnv [] prelude
 
 -- Takes source code and evaluates the "main" expression.
 run :: String -> Val
-run = runEnv (parseEval prelude)
+run = runEnv initEnv
 
 -- Same as run, but with a given initial environment.
 runEnv :: Env -> String -> Val
 runEnv env source =
-    let (prog,_) = parse source in
-    fromMaybe (error "No main to evaluate!") (lookup "main" (eval env prog))
+    fromMaybe (error "No main to evaluate!") (lookup "main" (parseEvalEnv env source))
 
 -- Transforms a Val into a Music object that can be played.
 toMusic :: Val -> Music
