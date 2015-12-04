@@ -77,7 +77,7 @@ data Expr = PitchClass E.PitchClass Loc
           | Snippet [Expr]      -- Note | Rest
           | Var String
           | List [Expr]         -- Homogeneous
-          | Lambda [String] Statement    -- Seq or Return, most likely
+          | Lambda [Pat] Statement    -- Seq or Return, most likely
           | App String [Expr]   -- Function name, arguments
           | If Expr Expr Expr  -- If statement: condition, true branch, false branch
           | Case Expr [(Pat, Expr)] -- case expr of pat -> expr;...
@@ -96,7 +96,7 @@ instance Show Expr where
     show (Snippet ss) = '{' : intercalate ", " (map show ss) ++ "}"
     show (Var v) = v
     show (List ls) = '[' : intercalate ", " (map show ls) ++ "]"
-    show (Lambda v s) = '(':'\\': unwords v ++ " -> " ++ shows s ")"
+    show (Lambda v s) = '(':'\\': unwords (map show v) ++ " -> " ++ shows s ")"
     show (App n as) = n ++ "(" ++ intercalate ", " (map show as) ++ ")"
     show (If c t f) = "if " ++ shows c " then " ++ shows t " else " ++ show f
     show (Case e ps) = "case " ++ shows e " of " ++
@@ -268,7 +268,7 @@ parseRest = Rest <$> b_parens (b_reserved "rest" *> parseExpr)
 parseLambda :: Parser Expr
 parseLambda = b_parens (Lambda <$> args <*> body)
     where
-        args = b_resop "\\" *> manyTill b_identifier (b_resop "->")
+        args = b_resop "\\" *> manyTill parsePat (b_resop "->")
         body = try bodyStmt <|> bodyExpr
         bodyExpr = Return <$> parseExpr <* option "" b_semi -- sugar for e.g. (\ a b -> a + b)
         bodyStmt = do

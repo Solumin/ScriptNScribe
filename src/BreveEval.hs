@@ -172,7 +172,9 @@ lookupVar env name = fromMaybe (error $ shows name " is undefined." ++ show env)
 evalApp :: Env -> String -> [Val] -> Val
 evalApp env name args =
     let (Vf (Lambda params body)) = lookupVar env name
-        res = eval (zip params args ++ env) body in
+        nonexhaust = "Non-exhaustive patterns in function " ++ name
+        argenv = concat $ fromMaybe (error nonexhaust) (traverse matchCase (zip params args))
+        res = eval (argenv ++ env) body in
     fromMaybe (error $ "Function " ++ name ++ " has no return statement!") (lookup "return" res)
 
 evalIf :: Env -> Expr -> Expr -> Expr -> Val
