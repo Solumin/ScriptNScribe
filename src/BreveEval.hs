@@ -22,13 +22,18 @@ type Env = [Binding]
 
 dummyLoc = TrLoc (-1,-1)
 
-data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Show, Eq)
+data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq)
+
+instance Show Trace where
+    show (TrLoc l) = show l
+    show (TrOp op a b) = '(' : shows a (shows op (shows b ")"))
+    show (TrUn op x) = shows op (show x)
 
 data Val = Vp E.PitchClass Trace
          | Vn Integer Trace
          | Vd Double Trace
          | Vb Bool
-         | Vnote Music     -- Note
+         | Vnote Val Val Val     -- Note
          | Vrest Music     -- Rest
          | Vseq Val Val   -- represents :+: (and therefore Snippet)
          | Vpar Val Val   -- represents the :=: operator for rest, notes and snippets
@@ -36,11 +41,11 @@ data Val = Vp E.PitchClass Trace
          | Vfunc Expr      -- Lambda
 
 instance Show Val where
-    show (Vp p t) = "Val_PitchClass <" ++ shows p (shows t ">")
-    show (Vn n t) = "Val_Integer <" ++ shows n (shows t ">")
-    show (Vd d t) = "Val_Double <" ++ shows d (shows t ">")
+    show (Vp p t) = "Val_PitchClass <" ++ shows p (' ' : (shows t ">"))
+    show (Vn n t) = "Val_Integer <" ++ shows n (' ' : (shows t ">"))
+    show (Vd d t) = "Val_Double <" ++ shows d (' ' :  (shows t ">"))
     show (Vb b) = "Val_Bool <" ++ shows b ">"
-    show (Vnote e) = "Val_Note <" ++ shows e ">"
+    show (Vnote p o d) = "Val_Note <" ++ unwords (map show [p,o,d]) ++ ">"
     show (Vrest r) = "Val_Rest <" ++ shows r ">"
     show (Vseq a b) = '(' : shows a " :+: " ++ shows b ")"
     show (Vpar a b) = '(' : shows a " :=: " ++ shows b ")"
@@ -54,7 +59,7 @@ instance Eq Val where
     a@(Vd _ _) == b@(Vn _ _) = b == a
     (Vd a _) == (Vd b _) = a == b
     (Vb a) == (Vb b) = a == b
-    (Vnote a) == (Vnote b) = a == b
+    (Vnote a b c) == (Vnote d e f) = and $ zipWith (==) [a,b,c] [d,e,f]
     (Vrest a) == (Vrest b) = a == b
     (Vseq a b) == (Vseq c d) = a == c && b == d
     (Vpar a b) == (Vpar c d) = a == c && b == d
@@ -68,7 +73,7 @@ instance Ord Val where
     (Vd a _) <= (Vn b _) = a <= fromInteger b
     (Vd a _) <= (Vd b _) = a <= b
     (Vb a) <= (Vb b) = a <= b
-    (Vnote a) <= (Vnote b) = a <= b
+    (Vnote a b c) <= (Vnote d e f) = or (zipWith (<=) [a,b,c] [d,e,f])
     (Vrest a) <= (Vrest b) = a <= b
     (Vpar a b) <= (Vpar c d) = a <= c && b <= d
     (Vseq a b) <= (Vseq c d) = a <= c && b <= d
@@ -102,7 +107,7 @@ runEnv env source =
 
 -- Transforms a Val into a Music object that can be played.
 toMusic :: Val -> Music
-toMusic (Vnote n) = n
+toMusic (Vnote (Vp p _) o d) = E.note (valToDur d) (p, valToOct o)
 toMusic (Vrest r) = r
 toMusic (Vseq a b) = toMusic a E.:+: toMusic b
 toMusic (Vpar a b) = toMusic a E.:=: toMusic b
@@ -137,7 +142,7 @@ evalExpr env expr = let evalE = evalExpr env in
     (B b) -> Vb b
     (UnOpExpr op e) -> evalUnOp op (evalExpr env e)
     (BinOpExpr op e1 e2) -> evalBinOp op (evalExpr env e1) (evalExpr env e2)
-    (Note p o d) -> note (evalE p) (evalE o) (evalE d)
+    (Note p o d) -> Vnote (evalE p) (evalE o) (evalE d) --note (evalE p) (evalE o) (evalE d)
     (Rest d) -> rest (evalE d)
     (Snippet ss) -> snippet (map evalE ss)
     (List ls) -> Vlist (map evalE ls)
@@ -147,9 +152,9 @@ evalExpr env expr = let evalE = evalExpr env in
     (If c t f) -> evalIf env c t f
     (Case cond cases) -> evalCase env (evalE cond) cases
 
-note :: Val -> Val -> Val -> Val
-note (Vp p _) o d = Vnote $ E.note (valToDur d) (p, valToOct o)
-note _ _ _ = error "Note takes a pitch class, an octave and a duration"
+-- note :: Val -> Val -> Val -> Val
+-- note (Vp p _) o d = Vnote $ E.note (valToDur d) (p, valToOct o)
+-- note _ _ _ = error "Note takes a pitch class, an octave and a duration"
 
 rest :: Val -> Val
 rest (Vd d _) = Vrest (E.rest (toRational d))
@@ -166,7 +171,7 @@ valToOct (Vn n _) = fromInteger n
 valToOct _ = error "Octaves must be integers"
 
 snippet :: [Val] -> Val
-snippet (v@(Vnote _):vs) = case vs of
+snippet (v@(Vnote{}):vs) = case vs of
     [] -> v
     _ -> Vseq v (snippet vs)
 snippet (v@(Vrest _):vs) = case vs of
@@ -203,15 +208,15 @@ evalCase env cond cases =
         Nothing -> error "Non-exhaustive patterns in Breve case statement."
 
 matchCase :: (Pat, Val) -> Maybe Env
-matchCase pv =
+matchCase (p,v) =
     let joinEnv a b = (++) <$> a <*> b in
-    case pv of
+    case (p,v) of
     (Ppc p, Vp p' _) -> if p == p' then Just [] else Nothing
     (Pn n, Vn n' _) -> if n == n' then Just [] else Nothing
     (Pd d, Vd d' _) -> if d == d' then Just [] else Nothing
     (Pb b, Vb b') -> if b == b' then Just [] else Nothing
-    (Pnote p o d, Vnote (E.Prim (E.Note d' (p',o')))) ->
-       concat <$> mapM matchCase [(p, Vp p' dummyLoc), (o, Vn (toInteger o') dummyLoc ), (d, Vd (fromRational d') dummyLoc)]
+    (Pnote p o d, Vnote p' o' d') ->
+       concat <$> mapM matchCase [(p, p'), (o, o'), (d, d')]
     (Prest d, Vrest (E.Prim (E.Rest d'))) -> matchCase (d, Vd (fromRational d') dummyLoc)
     (Psplit a r, Vlist (v:vs)) -> joinEnv (matchCase (a, v)) (matchCase (r, Vlist vs))
     (Plist (l:ls), Vlist (v:vs)) ->
@@ -220,7 +225,7 @@ matchCase pv =
         else Nothing
     (Plist [], Vlist []) -> Just []
     (Psnip (s:ss), Vseq h t) -> joinEnv (matchCase (s,h)) (matchCase (Psnip ss, t))
-    (Psnip (s:[]), Vnote n) -> matchCase(s, Vnote n)
+    (Psnip ([s]), Vnote{}) -> matchCase(s, v)
     (Psnip (s:[]), Vrest r) -> matchCase(s, Vrest r)
     (Pvar s, v) -> Just [(s, v)]
     (Ppat s p, v) -> joinEnv (Just [(s, v)]) (matchCase (p,v))
@@ -269,7 +274,7 @@ evalBinOp Div (Vn n1 l1) (Vn n2 l2) = Vd (fromInteger n1 / fromInteger n2) (TrOp
 evalBinOp SeqOp a b = Vseq (check a) (check b)
     where
     check v = case v of
-        (Vnote _) -> v
+        (Vnote{}) -> v
         (Vrest _) -> v
         (Vseq _ _) -> v
         (Vpar _ _) -> v
@@ -278,7 +283,7 @@ evalBinOp SeqOp a b = Vseq (check a) (check b)
 evalBinOp ParOp a b = Vpar (check a) (check b)
     where
     check v = case v of
-        (Vnote _) -> v
+        (Vnote{}) -> v
         (Vrest _) -> v
         (Vseq _ _) -> v
         (Vpar _ _) -> v
