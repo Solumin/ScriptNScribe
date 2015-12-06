@@ -11,7 +11,8 @@ import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
 import Control.Monad (msum)
-import Data.List (intercalate)
+import Data.Function (on)
+import Data.List (intercalate, nubBy)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe, catMaybes)
 import Data.Monoid (mappend)
@@ -26,25 +27,23 @@ type Env = (EvalRes, TraceList)
 emptyEnv :: Env
 emptyEnv = ([],[])
 
-type TraceMap = Map.Map Loc Val
-
 data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq)
 
 instance Show Trace where
     show (TrLoc l) = show l
-    show (TrOp op a b) = '(' : shows a (shows op (shows b ")"))
+    show (TrOp op a b) = '(' : shows a (' ' : shows op (' ' : shows b ")"))
     show (TrUn op x) = shows op (show x)
 
 data Val = Vp E.PitchClass Trace
          | Vn Integer Trace
          | Vd Double Trace
          | Vb Bool
-         | Vnote Val Val Val     -- Note
-         | Vrest Val     -- Rest
-         | Vseq Val Val   -- represents :+: (and therefore Snippet)
-         | Vpar Val Val   -- represents the :=: operator for rest, notes and snippets
-         | Vlist [Val]     -- Expr List
-         | Vfunc Expr      -- Lambda
+         | Vnote Val Val Val-- Note
+         | Vrest Val        -- Rest
+         | Vseq Val Val     -- represents :+: (and therefore Snippet)
+         | Vpar Val Val     -- represents the :=: operator for rest, notes and snippets
+         | Vlist [Val]      -- Expr List
+         | Vfunc Expr       -- Lambda
 
 instance Show Val where
     show (Vp p t) = "Val_PitchClass <" ++ shows p (' ' : shows t ">")
@@ -86,6 +85,12 @@ instance Ord Val where
     (Vlist a) <= (Vlist b) = a <= b
     a <= b = error $ unwords ["Cannot compare", show a, "and", show b]
 
+getTrace :: Val -> Trace
+getTrace val = case val of
+    (Vp _ t) -> t
+    (Vn _ t) -> t
+    (Vd _ t) -> t
+
 -- Takes source code and parses it to generate the AST and parse traces
 parse :: String -> (Statement, Traces)
 parse input = case runParser breveParser [] "input" input of
@@ -100,22 +105,17 @@ parseEvalEnv :: Env -> String -> Env
 parseEvalEnv env source =
     let (prog, traces) = parse source
         (evalRes, exprTraces) = eval env prog in
-    (evalRes, exprTraces)
+    (evalRes, nubBy ((==) `on` getTrace) exprTraces)
 
+-- Prelude contains many useful functions, like map and fold, written purely in
+-- Breve. initEnv loads the prelude so it can be used in parseEval.
 initEnv = parseEvalEnv emptyEnv prelude
 
--- makeTraceMap :: Traces -> TraceMap
--- makeTraceMap = Map.fromList . map (makepair . evalExpr emptyEnv)
---     where
---         makepair v@(Vp _ (TrLoc l)) = (l, v)
---         makepair v@(Vd _ (TrLoc l)) = (l, v)
---         makepair v@(Vn _ (TrLoc l)) = (l, v)
-
--- Takes source code and evaluates the "main" expression.
+-- Takes source code and evaluates the "main" expression (load Prelude)
 run :: String -> Val
 run = runEnv initEnv
 
--- Same as run, but with a given initial environment.
+-- Same as run, but with a given initial environment. (i.e. no Prelude)
 runEnv :: Env -> String -> Val
 runEnv env source =
     fromMaybe (error "No main to evaluate!") (lookup "main" (fst $ parseEvalEnv env source))
@@ -148,19 +148,9 @@ eval env (Seq ss) = foldl eval env ss
 eval env@(bs, ts) (Assign n e) = let (val, traces) = evalExpr env e in ((n,val):bs, traces ++ ts)
 eval env@(bs, ts) (Return e) = let (val, traces) = evalExpr env e in (("return",val):bs, traces ++ ts)
 
-logTrace :: TraceList -> Val -> TraceList
-logTrace traces val = case val of
-    (Vp _ _) -> val:traces
-    (Vn _ _) -> val:traces
-    (Vd _ _) -> val:traces
-    (Vb _) -> traces
-    (Vnote p o d) -> foldl logTrace traces [p,o,d]
-    (Vrest d) -> logTrace traces d
-    (Vseq v1 v2) -> foldl logTrace traces [v1,v2]
-    (Vpar v1 v2) -> foldl logTrace traces [v1,v2]
-    (Vlist vs) -> foldl logTrace traces vs
-    (Vfunc _) -> traces
-
+-- logIt is a predicate for determining if a Val should be added to the traces.
+-- Only those Vals that have Trace in their definition are logged.
+logIt :: Val -> Bool
 logIt val = case val of
     (Vp _ _) -> True
     (Vn _ _) -> True
@@ -176,9 +166,9 @@ logIt val = case val of
 evalExpr :: Env -> Expr -> (Val, TraceList)
 evalExpr env expr =
     let evalE = evalExpr env
-        both v = (v, [v])
-        with (v,t) tr = (v, t ++ tr)
-        only v = (v, []) in
+        both v = (v, [v])   -- v is returned and added to trace
+        with (v,t) tr = (v, t ++ tr) -- combine traces
+        only v = (v, []) in -- return only v
     case expr of
     (PitchClass p l) -> let v = Vp p (TrLoc l) in both v
     (N n l) -> let v = Vn n (TrLoc l) in both v
@@ -199,8 +189,7 @@ evalExpr env expr =
             (d', td) = evalE d
             n = note p' o' d' in
         (n, tp ++ to ++ td)
-    (Rest d) ->
-        let (d', td) = evalE d in (rest d', td)
+    (Rest d) -> let (d', td) = evalE d in (rest d', td)
     (Snippet ss) ->
         let (vals, traces) = unzip $ map evalE ss in (snippet vals, concat traces)
     (List ls) ->
@@ -210,12 +199,12 @@ evalExpr env expr =
     (App name args) ->
         let (vargs, traces) = unzip $ map evalE args
             res = evalApp env name vargs in
-        -- if (logIt res) then with (both res) (concat traces) else (res, concat traces)
+        -- if is loggable, res's tracelist contains res already
         with res (concat traces)
     (If c t f) ->
         let (cond, tc) = evalE c
             res = evalE $ evalIf cond t f in
-        with res tc -- if is loggable, res's traces contains res already
+        with res tc
     (Case c cases) ->
         let (cond, tc) = evalE c
             res = evalCase env cond cases in
@@ -377,23 +366,3 @@ evalBinOp Cons a (Vlist l) = Vlist (a : l)
 evalBinOp Cat (Vlist a) (Vlist b) = Vlist (a ++ b)
 
 evalBinOp o a b = error $ unwords ["Op", show o, "is undefined for args", show a, show b]
-
--- ==========
--- Traces
--- ==========
-
-getTraces :: EvalRes -> TraceList
-getTraces = concatMap (get . snd)
-    where
-        get :: Val -> [Val]
-        get val = case val of
-            (Vp _ l) -> [val]
-            (Vn _ l) -> [val]
-            (Vd _ l) -> [val]
-            (Vb _) -> []
-            (Vnote p o d) -> concatMap get [p,o,d]
-            (Vrest d) -> get d
-            (Vseq v1 v2) -> concatMap get [v1, v2]
-            (Vpar v1 v2) -> concatMap get [v1, v2]
-            (Vlist vs) -> concatMap get vs
-            (Vfunc _) -> []
