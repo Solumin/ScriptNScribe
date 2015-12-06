@@ -1,0 +1,158 @@
+OK, that should be all the notes I need to do trace-based synthesis for Breve.
+
+Source code locations: Not just numeric literals, but also pitchclass. (Which is
+basically an enum.) Plus we have two numeric literal types, ints and doubles.
+(Which are basically invisible to the user, they're still two separate types.)
+
+Expression traces: I'm not sure these are any different.
+Their prim ops: + - * / ^ % atan (???)
+    Inversion results in Maybe, so not all ops have to be invertible.
+Our prim ops: + - * / :=: :+: (: and ++????)
+
+A better idea might be to work "backwards".
+They based their design off the idea that user will be manipulating shapes,
+which will change numeric values in the program.
+In Breve, user manipulate notes, rests and snippets.
+- Notes: Change pitch (and octave) and duration
+- Rests: Duration
+- Snippets: Constituent NOTES and RESTS.
+=> Traceable ops: mathematic! Only +, -, * and / for now. Other ops will come
+along later. Pitch is ONLY +/- integers, so that's easy. Others are obviously
+more complex.
+
+OK, so what do I need to do to set up tracing?
+- Numeric Traces
+- Expression Traces
+- Map of locations to literals (basic traces)
+
+Currently, traces are lists of Expressions, specifically PitchClass, N and D,
+which have a location imbedded inside them.
+Need to add Expression Traces. Obviously this just means extending evalBinOp --
+but that ACTUALLY means extending the entire eval ecosystem.
+
+Focusing on just the 4 binary math ops, we can extend Trace to be:
+    Trace = TrLoc Loc | TrOp BinOp Trace Trace
+The 3 exprs still have a Loc inside them, put there during parsing.
+During synth, locations are compared. So maybe also make a map of locations to
+constants as we go along. (we did this during synth last time -- could do it
+again, might be simpler?)
+
+Then with expression traces:
+- Val for PitchClass, N and D have Loc added to them
+- evalBinOp Add, Sub, Mult and Div record traces in returned values.
+
+This SHOULD include the traces created during parsing and in fact I don't know
+I need to return traces from parsing now!
+
+Good example of trace: Arpeggio! (Of course!)
+
+Consider arpeggio([0,4,7], (D 4 1/4))
+The input snippet is (D 4 1/4)
+The output is the arpeggio (D 4 1/4), (Fs 4 1/4), (A 4 1/4)
+If the user adjusts the output to be (Cs 4 1/4), (Fs 4 1/4), (A 4 1/4), it
+should synth [0, 4, 7] -> [-1, 4, 7] (well just the 0 changes) though it can
+also change (D 4 1/4) to (Cs 4 1/4)
+
+==============================
+Tracing (Notes from the paper)
+==============================
+
+Sec. 3
+Two kinds of traces:
+- Source code locations: Records that numeric literal n originates from a
+  particular location in the program.
+    - Easy to update values in real time as user manipulates output
+    - Have no effect on evaluation of program
+    - Inserted implicitly by parser
+- Expression Traces: Combinations of smaller traces during the evaluation of
+  primitive operations.
+    - Prim ops: addition, multiplication, etc.
+    - little records the structure of expressions when evaluating prim ops
+    - e.g. xi = (+ x0 (* i sep)) is a(n abstract) trace. For each i, would
+      generate xi = (+ x0 (* iN sep)) (i.e. would have i1, i2...)
+    - Also create map of variables to run-time values:
+        p = [x0 -> 40, sep -> 110, i0 -> 0, i1 -> 1,...]
+
+Synthesizing updates:
+- Continued example: Using xi = (+ x0 (* i sep)), program generates 3 boxes with
+  xi = 40, xi = 150, xi = 260.
+- User drags third box so now xi = 304 (instead of 260):
+    304 = (+ x0 (* i3 sep))
+- Obviously, current bindings in p don't satisfy this equation! Goal is to synth
+  program that satisfies this new equation, & also satisfied xi = 40 & xi = 150
+
+Structural Updates:
+- "Non-local" updates. Arbitrary changes to original program -- ASTs of the two
+  progs are not necessarily related.
+- In s-n-s, inferred structural updates will "hardcode" new shapes.
+
+Local Updates:
+- Only change numeric literals. Basically just a new substitution.
+- Example: 304 = (+ x0 (* i3 sep)). Three possible changes:
+    x0 -> 84 or sep -> 132 or i3 -> 2.4
+    - That is, move all the boxes over, increase the distance between them, or
+      changes the index used to calculate (which actually acts just like the
+      structural update!)
+    - Design constraints prevent synth from changing multiple variables.
+- Frozen Constants: Synth may try to change constants that user doesn't want to
+  change. Can explicitly "freeze" them to prevent changes.
+- Programming with integers: little provides funcs that do prim ops in terms of
+  addition. Much simpler for synth, usable only by integers though.
+
+Ambiguities:
+- Ad Hoc: Ask user to chose best updates. Use value distance metric that
+  compares similarities between progs to rank updates.
+- Live mode: Real-time, so don't ask user about ambiguities.
+    - Don't infer structural updates. Expect user to make "large" design changes
+      themselves.
+    - Use rotating assignment when deciding what updates to synthesise.
+    - That is, try to have each location (trace) updated few times as possible.
+      If two traces both have x0 and sep, they each update only on of those.
+
+Trace-Based Program Synthesis (the actual algo) (Sec. 4)
+- Insight 1: GUI manipulations typically change NUMERIC attributes
+- Insight 2: Control flow rarely changes between runs, so traces only record
+  "data flow"
+- Traces: either location l or expression (op t1 ... tm) that records prim op
+  that was applied to traces t1 ... tm.
+
+Program Synthesis Problem:
+    - Output of program may contain k numeric attributes and user may manipulate
+      0 <= j <= k of them.
+    - j changed values become j hard constraints (nj' = tj). Unchanged values
+      are soft constraints. Helps avoid to unsastifiable equations.
+- Context: value context V is  value with m > 0 placeholders (holes)
+    V = hole_i | n | s | b | [] | [V1 | V2] | (\ p e)
+- Substitutions: Substitution p is a mapping from program locations to numbers.
+- Goal: Faithful local updates.
+    - Faithful: User-updated values (hard constraints) are maintained in new program.
+    - Soft constraints are ignored, but impact of ignoring them is limited by
+      distance ranking.
+
+Synthesising Faithful Updates:
+- 3 Design principles:
+    - I) Solve only one equation at a time
+    - II) Solve only univariate equations
+    - III) Solve equations only in simple, stylized forms.
+- Keep algorithm simple and fast
+- Given: User updates m values, nt1 ... ntm, which creates set of trace-value
+  equations {n1' = t1, ..., nm' = tm}. Let p0 be mapping of locations to numbers
+  in original program.
+    1. Define Li = Locs(ti) to be set of prog locations (constants, really) that
+    occur in ti, each of which is a candidate "varable" to solve for.
+    2. Define Li' to be locs that are ONLY in ti. (Disjoint w/ Union of Lj i/=j)
+    3. With (l1,...,lm) from L1' x ... x Lm' (one loc from each disjoin set)
+    4. ki = Solve(p0, li, ni' = ti), update li -> ki to p0.
+- Two different implementations of "Solve" function.
+    - Addition only: Count # of occurences c of the unknown variable. Divide
+      partial sum s by c. ???
+    - Single-occurence: Unknown loc var occurs exactly ONCE in equation. Uses
+      inverses of prim ops.
+- Ranking - look at later if necessary, don't worry about it right now.
+
+Plausible Updates:
+- SynthesizeFaithful does not solve for prog locs that appear in more than one
+  trace. Overly restrictive in some cases! Need a relaxed version.
+- Plausible updates: Synth only satisfies some of user's changes.
+- Synthesizing: Similar to previous, but having variables overlap. Choose
+  arbitrary locs from each trace!
