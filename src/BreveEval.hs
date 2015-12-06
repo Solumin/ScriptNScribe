@@ -22,6 +22,7 @@ type Binding = (String, Val)
 type Env = [Binding]
 
 type TraceMap = Map.Map Loc Val
+type TraceList = [Val]
 
 data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq)
 
@@ -88,12 +89,14 @@ parse input = case runParser breveParser [] "input" input of
     Right st -> st
 
 -- Produce the Environment defined by a program.
-parseEval :: String -> (Env, TraceMap)
+parseEval :: String -> (Env, TraceList)
 parseEval = parseEvalEnv initEnv
 
-parseEvalEnv :: Env -> String -> (Env, TraceMap)
-parseEvalEnv env source = let (prog, traces) = parse source in
-     (eval env prog, makeTraceMap traces)
+parseEvalEnv :: Env -> String -> (Env, TraceList)
+parseEvalEnv env source =
+    let (prog, traces) = parse source
+        evalRes = eval env prog in
+     (evalRes, getTraces evalRes)
 
 initEnv = fst $ parseEvalEnv [] prelude
 
@@ -312,3 +315,23 @@ evalBinOp Cons a (Vlist l) = Vlist (a : l)
 evalBinOp Cat (Vlist a) (Vlist b) = Vlist (a ++ b)
 
 evalBinOp o a b = error $ unwords ["Op", show o, "is undefined for args", show a, show b]
+
+-- ==========
+-- Traces
+-- ==========
+
+getTraces :: Env -> TraceList
+getTraces = concatMap (get . snd)
+    where
+        get :: Val -> [Val]
+        get val = case val of
+            (Vp _ l) -> [val]
+            (Vn _ l) -> [val]
+            (Vd _ l) -> [val]
+            (Vb _) -> []
+            (Vnote p o d) -> concatMap get [p,o,d]
+            (Vrest d) -> get d
+            (Vseq v1 v2) -> concatMap get [v1, v2]
+            (Vpar v1 v2) -> concatMap get [v1, v2]
+            (Vlist vs) -> concatMap get vs
+            (Vfunc _) -> []
