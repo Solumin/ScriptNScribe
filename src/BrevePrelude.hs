@@ -42,7 +42,7 @@ flip = (\ f y x -> f(x,y));
 
 map = (\ f ls -> case ls of
         [] -> [];
-        (x:xs) -> f(h) : map(f, xs);
+        (x:xs) -> f(x) : map(f, xs);
     );
 
 foldl = (\ f init ls -> case ls of
@@ -102,6 +102,7 @@ chord = (\ ls -> case ls of
         (x:xs) -> x :=: chord(xs);
         [] -> (rest 0);
     );
+
 
 changeOctave = (\ (p o d) delta -> (p o+delta d));
 
