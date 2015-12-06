@@ -10,9 +10,10 @@ import qualified Euterpea (play, line)
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
-import Data.Maybe (fromMaybe, catMaybes)
-import Control.Monad (zipWithM, mplus, msum)
+import Control.Monad (msum)
 import Data.List (intercalate)
+import qualified Data.Map as Map
+import Data.Maybe (fromMaybe, catMaybes)
 import Data.Monoid (mappend)
 
 type Music = E.Music E.Pitch
@@ -20,7 +21,7 @@ type Music = E.Music E.Pitch
 type Binding = (String, Val)
 type Env = [Binding]
 
-dummyLoc = TrLoc (-1,-1)
+type TraceMap = Map.Map Loc Val
 
 data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq)
 
@@ -41,9 +42,9 @@ data Val = Vp E.PitchClass Trace
          | Vfunc Expr      -- Lambda
 
 instance Show Val where
-    show (Vp p t) = "Val_PitchClass <" ++ shows p (' ' : (shows t ">"))
-    show (Vn n t) = "Val_Integer <" ++ shows n (' ' : (shows t ">"))
-    show (Vd d t) = "Val_Double <" ++ shows d (' ' :  (shows t ">"))
+    show (Vp p t) = "Val_PitchClass <" ++ shows p (' ' : shows t ">")
+    show (Vn n t) = "Val_Integer <" ++ shows n (' ' : shows t ">")
+    show (Vd d t) = "Val_Double <" ++ shows d (' ' :  shows t ">")
     show (Vb b) = "Val_Bool <" ++ shows b ">"
     show (Vnote p o d) = "Val_Note <" ++ unwords (map show [p,o,d]) ++ ">"
     show (Vrest r) = "Val_Rest <" ++ shows r ">"
@@ -87,14 +88,21 @@ parse input = case runParser breveParser [] "input" input of
     Right st -> st
 
 -- Produce the Environment defined by a program.
--- TODO Load the Prelude environment
-parseEval :: String -> Env
+parseEval :: String -> (Env, TraceMap)
 parseEval = parseEvalEnv initEnv
 
-parseEvalEnv :: Env -> String -> Env
-parseEvalEnv env = eval env . fst . parse
+parseEvalEnv :: Env -> String -> (Env, TraceMap)
+parseEvalEnv env source = let (prog, traces) = parse source in
+     (eval env prog, makeTraceMap traces)
 
-initEnv = parseEvalEnv [] prelude
+initEnv = fst $ parseEvalEnv [] prelude
+
+makeTraceMap :: Traces -> TraceMap
+makeTraceMap = Map.fromList . map (makepair . evalExpr [])
+    where
+        makepair v@(Vp _ (TrLoc l)) = (l, v)
+        makepair v@(Vd _ (TrLoc l)) = (l, v)
+        makepair v@(Vn _ (TrLoc l)) = (l, v)
 
 -- Takes source code and evaluates the "main" expression.
 run :: String -> Val
@@ -103,7 +111,7 @@ run = runEnv initEnv
 -- Same as run, but with a given initial environment.
 runEnv :: Env -> String -> Val
 runEnv env source =
-    fromMaybe (error "No main to evaluate!") (lookup "main" (parseEvalEnv env source))
+    fromMaybe (error "No main to evaluate!") (lookup "main" (fst $ parseEvalEnv env source))
 
 -- Transforms a Val into a Music object that can be played.
 toMusic :: Val -> Music
@@ -142,7 +150,7 @@ evalExpr env expr = let evalE = evalExpr env in
     (B b) -> Vb b
     (UnOpExpr op e) -> evalUnOp op (evalExpr env e)
     (BinOpExpr op e1 e2) -> evalBinOp op (evalExpr env e1) (evalExpr env e2)
-    (Note p o d) -> Vnote (evalE p) (evalE o) (evalE d) --note (evalE p) (evalE o) (evalE d)
+    (Note p o d) -> Vnote (evalE p) (evalE o) (evalE d)
     (Rest d) -> Vrest (evalE d)
     (Snippet ss) -> snippet (map evalE ss)
     (List ls) -> Vlist (map evalE ls)
@@ -225,8 +233,8 @@ matchCase (p,v) =
         else Nothing
     (Plist [], Vlist []) -> Just []
     (Psnip (s:ss), Vseq h t) -> joinEnv (matchCase (s,h)) (matchCase (Psnip ss, t))
-    (Psnip ([s]), Vnote{}) -> matchCase(s, v)
-    (Psnip (s:[]), Vrest _) -> matchCase(s, v)
+    (Psnip [s], Vnote{}) -> matchCase(s, v)
+    (Psnip [s], Vrest _) -> matchCase(s, v)
     (Pvar s, v) -> Just [(s, v)]
     (Ppat s p, v) -> joinEnv (Just [(s, v)]) (matchCase (p,v))
     (Pwc, _) -> Just []
