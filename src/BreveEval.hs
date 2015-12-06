@@ -51,7 +51,7 @@ instance Show Val where
     show (Vseq a b) = '(' : shows a " :+: " ++ shows b ")"
     show (Vpar a b) = '(' : shows a " :=: " ++ shows b ")"
     show (Vlist l) = "Vlist [" ++ intercalate ", " (map show l) ++ "]"
-    show (Vfunc l) = show l
+    show (Vfunc l) = "Vfunc <" ++ shows l ">"
 
 instance Eq Val where
     (Vp a _) == (Vp b _) = a == b
@@ -149,9 +149,9 @@ evalExpr env expr = let evalE = evalExpr env in
     (D d l) -> Vd d (TrLoc l)
     (B b) -> Vb b
     (UnOpExpr op e) -> evalUnOp op (evalExpr env e)
-    (BinOpExpr op e1 e2) -> evalBinOp op (evalExpr env e1) (evalExpr env e2)
-    (Note p o d) -> Vnote (evalE p) (evalE o) (evalE d)
-    (Rest d) -> Vrest (evalE d)
+    (BinOpExpr op e1 e2) -> evalBinOp op (evalE e1) (evalE e2)
+    (Note p o d) -> note (evalE p) (evalE o) (evalE d)
+    (Rest d) -> rest (evalE d)
     (Snippet ss) -> snippet (map evalE ss)
     (List ls) -> Vlist (map evalE ls)
     (Var s) -> lookupVar env s
@@ -160,14 +160,17 @@ evalExpr env expr = let evalE = evalExpr env in
     (If c t f) -> evalIf env c t f
     (Case cond cases) -> evalCase env (evalE cond) cases
 
--- note :: Val -> Val -> Val -> Val
--- note (Vp p _) o d = Vnote $ E.note (valToDur d) (p, valToOct o)
--- note _ _ _ = error "Note takes a pitch class, an octave and a duration"
+note :: Val -> Val -> Val -> Val
+note p@(Vp{}) o@(Vn{}) d = case d of
+    (Vd{}) -> Vnote p o d
+    (Vn{}) -> Vnote p o d
+    _ -> error $ "Expected a numeric duration, received " ++ show d
+note _ _ _ = error "Note takes a pitch class, an integer octave and a numeric duration"
 
--- rest :: Val -> Val
--- rest (Vd d _) = Vrest (E.rest (toRational d))
--- rest (Vn n _) = Vrest (E.rest (toRational n))
--- rest _ = error "Rests take a duration"
+rest :: Val -> Val
+rest v@(Vd d _) = Vrest v
+rest v@(Vn n _) = Vrest v
+rest _ = error "Rests take a numeric duration"
 
 valToDur :: Val -> E.Dur
 valToDur (Vd d _) = toRational d
