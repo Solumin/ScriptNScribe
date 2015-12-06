@@ -34,7 +34,7 @@ data Val = Vp E.PitchClass Trace
          | Vd Double Trace
          | Vb Bool
          | Vnote Val Val Val     -- Note
-         | Vrest Music     -- Rest
+         | Vrest Val     -- Rest
          | Vseq Val Val   -- represents :+: (and therefore Snippet)
          | Vpar Val Val   -- represents the :=: operator for rest, notes and snippets
          | Vlist [Val]     -- Expr List
@@ -108,7 +108,7 @@ runEnv env source =
 -- Transforms a Val into a Music object that can be played.
 toMusic :: Val -> Music
 toMusic (Vnote (Vp p _) o d) = E.note (valToDur d) (p, valToOct o)
-toMusic (Vrest r) = r
+toMusic (Vrest d) = E.rest (valToDur d)
 toMusic (Vseq a b) = toMusic a E.:+: toMusic b
 toMusic (Vpar a b) = toMusic a E.:=: toMusic b
 toMusic v = error $ "Cannot create a music object from " ++ show v
@@ -143,7 +143,7 @@ evalExpr env expr = let evalE = evalExpr env in
     (UnOpExpr op e) -> evalUnOp op (evalExpr env e)
     (BinOpExpr op e1 e2) -> evalBinOp op (evalExpr env e1) (evalExpr env e2)
     (Note p o d) -> Vnote (evalE p) (evalE o) (evalE d) --note (evalE p) (evalE o) (evalE d)
-    (Rest d) -> rest (evalE d)
+    (Rest d) -> Vrest (evalE d)
     (Snippet ss) -> snippet (map evalE ss)
     (List ls) -> Vlist (map evalE ls)
     (Var s) -> lookupVar env s
@@ -156,10 +156,10 @@ evalExpr env expr = let evalE = evalExpr env in
 -- note (Vp p _) o d = Vnote $ E.note (valToDur d) (p, valToOct o)
 -- note _ _ _ = error "Note takes a pitch class, an octave and a duration"
 
-rest :: Val -> Val
-rest (Vd d _) = Vrest (E.rest (toRational d))
-rest (Vn n _) = Vrest (E.rest (toRational n))
-rest _ = error "Rests take a duration"
+-- rest :: Val -> Val
+-- rest (Vd d _) = Vrest (E.rest (toRational d))
+-- rest (Vn n _) = Vrest (E.rest (toRational n))
+-- rest _ = error "Rests take a duration"
 
 valToDur :: Val -> E.Dur
 valToDur (Vd d _) = toRational d
@@ -217,7 +217,7 @@ matchCase (p,v) =
     (Pb b, Vb b') -> if b == b' then Just [] else Nothing
     (Pnote p o d, Vnote p' o' d') ->
        concat <$> mapM matchCase [(p, p'), (o, o'), (d, d')]
-    (Prest d, Vrest (E.Prim (E.Rest d'))) -> matchCase (d, Vd (fromRational d') dummyLoc)
+    (Prest d, Vrest d') -> matchCase (d, d')
     (Psplit a r, Vlist (v:vs)) -> joinEnv (matchCase (a, v)) (matchCase (r, Vlist vs))
     (Plist (l:ls), Vlist (v:vs)) ->
         if length ls == length vs
@@ -226,7 +226,7 @@ matchCase (p,v) =
     (Plist [], Vlist []) -> Just []
     (Psnip (s:ss), Vseq h t) -> joinEnv (matchCase (s,h)) (matchCase (Psnip ss, t))
     (Psnip ([s]), Vnote{}) -> matchCase(s, v)
-    (Psnip (s:[]), Vrest r) -> matchCase(s, Vrest r)
+    (Psnip (s:[]), Vrest _) -> matchCase(s, v)
     (Pvar s, v) -> Just [(s, v)]
     (Ppat s p, v) -> joinEnv (Just [(s, v)]) (matchCase (p,v))
     (Pwc, _) -> Just []
