@@ -19,10 +19,14 @@ import Data.Monoid (mappend)
 type Music = E.Music E.Pitch
 
 type Binding = (String, Val)
-type Env = [Binding]
+type EvalRes = [Binding]
+type TraceList = [Val]
+type Env = (EvalRes, TraceList)
+
+emptyEnv :: Env
+emptyEnv = ([],[])
 
 type TraceMap = Map.Map Loc Val
-type TraceList = [Val]
 
 data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq)
 
@@ -89,23 +93,23 @@ parse input = case runParser breveParser [] "input" input of
     Right st -> st
 
 -- Produce the Environment defined by a program.
-parseEval :: String -> (Env, TraceList)
+parseEval :: String -> Env
 parseEval = parseEvalEnv initEnv
 
-parseEvalEnv :: Env -> String -> (Env, TraceList)
+parseEvalEnv :: Env -> String -> Env
 parseEvalEnv env source =
     let (prog, traces) = parse source
-        evalRes = eval env prog in
-     (evalRes, getTraces evalRes)
+        (evalRes, exprTraces) = eval env prog in
+    (evalRes, exprTraces)
 
-initEnv = fst $ parseEvalEnv [] prelude
+initEnv = parseEvalEnv emptyEnv prelude
 
-makeTraceMap :: Traces -> TraceMap
-makeTraceMap = Map.fromList . map (makepair . evalExpr [])
-    where
-        makepair v@(Vp _ (TrLoc l)) = (l, v)
-        makepair v@(Vd _ (TrLoc l)) = (l, v)
-        makepair v@(Vn _ (TrLoc l)) = (l, v)
+-- makeTraceMap :: Traces -> TraceMap
+-- makeTraceMap = Map.fromList . map (makepair . evalExpr emptyEnv)
+--     where
+--         makepair v@(Vp _ (TrLoc l)) = (l, v)
+--         makepair v@(Vd _ (TrLoc l)) = (l, v)
+--         makepair v@(Vn _ (TrLoc l)) = (l, v)
 
 -- Takes source code and evaluates the "main" expression.
 run :: String -> Val
@@ -141,27 +145,81 @@ perform = Euterpea.play . toMusic . run
 -- each component statement is evaluated.
 eval :: Env -> Statement -> Env
 eval env (Seq ss) = foldl eval env ss
-eval env (Assign n e) = (n, evalExpr env e) : env
-eval env (Return e) = ("return", evalExpr env e) : env
+eval env@(bs, ts) (Assign n e) = let (val, traces) = evalExpr env e in ((n,val):bs, traces ++ ts)
+eval env@(bs, ts) (Return e) = let (val, traces) = evalExpr env e in (("return",val):bs, traces ++ ts)
 
-evalExpr :: Env -> Expr -> Val
-evalExpr env expr = let evalE = evalExpr env in
+logTrace :: TraceList -> Val -> TraceList
+logTrace traces val = case val of
+    (Vp _ _) -> val:traces
+    (Vn _ _) -> val:traces
+    (Vd _ _) -> val:traces
+    (Vb _) -> traces
+    (Vnote p o d) -> foldl logTrace traces [p,o,d]
+    (Vrest d) -> logTrace traces d
+    (Vseq v1 v2) -> foldl logTrace traces [v1,v2]
+    (Vpar v1 v2) -> foldl logTrace traces [v1,v2]
+    (Vlist vs) -> foldl logTrace traces vs
+    (Vfunc _) -> traces
+
+logIt val = case val of
+    (Vp _ _) -> True
+    (Vn _ _) -> True
+    (Vd _ _) -> True
+    (Vb _) -> False
+    (Vnote p o d) -> False
+    (Vrest d) -> False
+    (Vseq v1 v2) -> False
+    (Vpar v1 v2) -> False
+    (Vlist vs) -> False
+    (Vfunc _) -> False
+
+evalExpr :: Env -> Expr -> (Val, TraceList)
+evalExpr env expr =
+    let evalE = evalExpr env
+        both v = (v, [v])
+        with (v,t) tr = (v, t ++ tr)
+        only v = (v, []) in
     case expr of
-    (PitchClass p l) -> Vp p (TrLoc l)
-    (N n l) -> Vn n (TrLoc l)
-    (D d l) -> Vd d (TrLoc l)
-    (B b) -> Vb b
-    (UnOpExpr op e) -> evalUnOp op (evalExpr env e)
-    (BinOpExpr op e1 e2) -> evalBinOp op (evalE e1) (evalE e2)
-    (Note p o d) -> note (evalE p) (evalE o) (evalE d)
-    (Rest d) -> rest (evalE d)
-    (Snippet ss) -> snippet (map evalE ss)
-    (List ls) -> Vlist (map evalE ls)
-    (Var s) -> lookupVar env s
-    l@(Lambda _ _) -> Vfunc l
-    (App name args) -> evalApp env name (map evalE args)
-    (If c t f) -> evalIf env c t f
-    (Case cond cases) -> evalCase env (evalE cond) cases
+    (PitchClass p l) -> let v = Vp p (TrLoc l) in both v
+    (N n l) -> let v = Vn n (TrLoc l) in both v
+    (D d l) -> let v = Vd d (TrLoc l) in both v
+    (B b) -> only $ Vb b
+    (UnOpExpr op e) ->
+        let (v1, t) = evalE e
+            res = evalUnOp op v1 in
+        if logIt res then with (both res) t else with (only res) t
+    (BinOpExpr op e1 e2) ->
+        let (v1, t1) = evalE e1
+            (v2, t2) = evalE e2
+            res = evalBinOp op v1 v2 in
+        if logIt res then with (both res) (t1 ++ t2) else with (only res) (t1 ++ t2)
+    (Note p o d) ->
+        let (p', tp) = evalE p
+            (o', to) = evalE o
+            (d', td) = evalE d
+            n = note p' o' d' in
+        (n, tp ++ to ++ td)
+    (Rest d) ->
+        let (d', td) = evalE d in (rest d', td)
+    (Snippet ss) ->
+        let (vals, traces) = unzip $ map evalE ss in (snippet vals, concat traces)
+    (List ls) ->
+        let (vals, traces) = unzip $ map evalE ls in (Vlist vals, concat traces)
+    (Var s) -> let v = lookupVar env s in if logIt v then both v else only v
+    l@(Lambda _ _) -> only $ Vfunc l
+    (App name args) ->
+        let (vargs, traces) = unzip $ map evalE args
+            res = evalApp env name vargs in
+        -- if (logIt res) then with (both res) (concat traces) else (res, concat traces)
+        with res (concat traces)
+    (If c t f) ->
+        let (cond, tc) = evalE c
+            res = evalE $ evalIf cond t f in
+        with res tc -- if is loggable, res's traces contains res already
+    (Case c cases) ->
+        let (cond, tc) = evalE c
+            res = evalCase env cond cases in
+        with res tc
 
 note :: Val -> Val -> Val -> Val
 note p@(Vp{}) o@(Vn{}) d = case d of
@@ -194,34 +252,38 @@ snippet (v@(Vrest _):vs) = case vs of
 snippet (_:vs) = error "A snippet should only contain Note or Rest objects"
 
 lookupVar :: Env -> String -> Val
-lookupVar env name = fromMaybe (error $ shows name " is undefined." ++ show env) (lookup name env)
+lookupVar env name = fromMaybe (error $ shows name " is undefined." ++ show env) (lookup name $ fst env)
 
-evalApp :: Env -> String -> [Val] -> Val
-evalApp env name args =
+evalApp :: Env -> String -> [Val] -> (Val, TraceList)
+evalApp env@(bs,ts) name args =
     let (Vfunc (Lambda params body)) = lookupVar env name
         nonexhaust = "Non-exhaustive patterns in function " ++ name
         argenv = concat $ fromMaybe (error nonexhaust) (traverse matchCase (zip params args))
-        res = eval (argenv ++ env) body in
-    fromMaybe (error $ "Function " ++ name ++ " has no return statement!") (lookup "return" res)
+        (evalRes, traces) = eval (argenv ++ bs, ts) body
+        res = fromMaybe
+                (error $ "Function " ++ name ++ " has no return statement!")
+                (lookup "return" evalRes)
+        in
+    (res, traces)
 
-evalIf :: Env -> Expr -> Expr -> Expr -> Val
-evalIf env c t f = case evalExpr env c of
-    (Vb True) -> evalExpr env t
-    (Vb False) -> evalExpr env f
+evalIf :: Val -> Expr -> Expr -> Expr
+evalIf c t f = case c of
+    (Vb True) -> t
+    (Vb False) -> f
     _ -> error "Breve is not 'truthy'; conditions must evaluate to bool."
 
-evalCase :: Env -> Val -> [(Pat, Expr)] -> Val
-evalCase env cond cases =
+evalCase :: Env -> Val -> [(Pat, Expr)] -> (Val, TraceList)
+evalCase env@(bs,ts) cond cases =
     -- hlint iterated the following line a good 3-4 times before coming up with
     -- this. Started with "map matchCase $ zip (map fst cases) (repeat c)"
     let envs = map ((\ c -> curry matchCase c cond) . fst) cases
         -- Take [Maybe Env] and [(Pat, Expr)], produce [Maybe (Expr, Env)]
         evals = zipWith (\ m p -> fmap ((,) (snd p)) m) envs cases in
     case msum evals of
-        Just (expr, env') -> evalExpr (env' ++ env) expr
+        Just (expr, env') -> evalExpr (env' ++ bs, ts) expr
         Nothing -> error "Non-exhaustive patterns in Breve case statement."
 
-matchCase :: (Pat, Val) -> Maybe Env
+matchCase :: (Pat, Val) -> Maybe EvalRes
 matchCase (p,v) =
     let joinEnv a b = (++) <$> a <*> b in
     case (p,v) of
@@ -320,7 +382,7 @@ evalBinOp o a b = error $ unwords ["Op", show o, "is undefined for args", show a
 -- Traces
 -- ==========
 
-getTraces :: Env -> TraceList
+getTraces :: EvalRes -> TraceList
 getTraces = concatMap (get . snd)
     where
         get :: Val -> [Val]
