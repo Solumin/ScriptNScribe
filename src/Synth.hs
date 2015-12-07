@@ -9,9 +9,10 @@ import BreveEval
 
 import qualified Euterpea as E
 
-import Control.Monad (liftM, liftM2, mplus, zipWithM)
+import Control.Monad (liftM, liftM2, mplus)
 import qualified Data.Map.Strict as Map
-import Data.List ((\\))
+import Data.Function (on)
+import Data.List (find, sortBy, tails, transpose)
 import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.Tuple (swap)
 
@@ -19,12 +20,13 @@ type TraceMap = Map.Map Loc Val
 
 toTraceMap :: TraceList -> TraceMap
 toTraceMap = Map.fromList . mapMaybe makePairs
-    where
-    makePairs val = case val of
-        (Vp _ (TrLoc l)) -> Just (l, val)
-        (Vn _ (TrLoc l)) -> Just (l, val)
-        (Vd _ (TrLoc l)) -> Just (l, val)
-        _ -> Nothing
+
+makePairs :: Val -> Maybe (Loc, Val)
+makePairs val = case val of
+    (Vp _ (TrLoc l)) -> Just (l, val)
+    (Vn _ (TrLoc l)) -> Just (l, val)
+    (Vd _ (TrLoc l)) -> Just (l, val)
+    _ -> Nothing
 
 getLocs :: Trace -> [Loc]
 getLocs = getLocs' []
@@ -33,40 +35,54 @@ getLocs' locs (TrLoc l) = [l]
 getLocs' locs (TrUn _ t) = getLocs' locs t
 getLocs' locs (TrOp _ t1 t2) = getLocs' locs t1 ++ getLocs' locs t2
 
-synthFaithful :: TraceMap -> TraceList -> Maybe TraceMap
+-- Get all locations [[Loc]]
+-- For each update, maybe synth for each location [[Maybe Val)]]
+-- Then get each of the valid substitutions for each update [[Val]]
+-- If any of those are empty (at least one update had no valid synths) then
+-- synthesis failed (return [] or Nothing?) (hard constraint could not be
+-- satisfied
+-- Start building complete programs using the rotating heuristic. [TraceMap]
+--    Say we had [[1,2,3],[1,2],[3],[2,4]]
+--    [1,2,3,4], [2,1,3,4], >[3,1,3,4]<, >[1,2,3,2]<
+--    Only two update sets are actually valid, though... the paper may try to
+--    allow them? I think it handles multiple bindings by just doing the
+--    rightmost.
+
+synthFaithful :: TraceMap -> TraceList -> [TraceMap]
 synthFaithful rho updates = let
     allLocs = map (getLocs . getTrace) updates
-    chosen = chooseSemiUnique allLocs
-    newTraces = zipWithM (solveSimple rho) chosen updates in
-    case newTraces of
-        Nothing -> Nothing
-        Just vals -> Just $ foldl (\m (l,v) -> Map.insert l v m) rho (zip chosen vals)
-
--- synthFaithful :: TraceMap -> TraceList -> Maybe TraceMap
--- synthFaithful rho ups = liftM (\v -> Map.insert loc v rho) val
---     where
---         up = head ups
---         tr = getTrace up
---         loc = getFirstLoc tr
---         val = solveSimple rho loc up -- fail synth instead of orig val
+    allNewVals = map catMaybes $ zipWith (map . solveSimple rho) updates allLocs in
+    if any null allNewVals then [] else
+        map Map.fromList $ rotate (map (mapMaybe makePairs) allNewVals)
 
 -- Choose the first element of the sublist that has not been selected previously
 -- from another list.
 -- If all elements from the sublist have already been used, choose the first
 -- one.
-chooseSemiUnique :: Eq a => [[a]] -> [a]
-chooseSemiUnique =
-    foldl (\cs ls -> cs ++
-            [if all (`elem` cs) ls then head ls else head $ filter (not . (`elem` cs)) ls])
-        []
+-- chooseSemiUnique :: Eq a => [[a]] -> [a]
+-- chooseSemiUnique =
+--     foldl (\cs ls -> cs ++
+--             [if all (`elem` cs) ls then head ls else head $ filter (not . (`elem` cs)) ls])
+--         []
 
-solveSimple :: TraceMap -> Loc -> Val -> Maybe Val
-solveSimple rho loc val = case getTrace val of
+rotate1 :: Eq a => [[a]] -> [a]
+rotate1 = foldl (\ls as -> ls ++ [fromMaybe (head as) (as `firstNotIn` ls)]) []
+
+rotate :: Eq a => [[a]] -> [[a]]
+rotate lls = let
+    (longest : rest) = sortBy (flip compare `on` length) lls in -- sorts w/ longest first
+    map (\l -> rotate1 (l : rest)) (init $ tails longest)
+
+firstNotIn :: Eq a => [a] -> [a] -> Maybe a
+firstNotIn list filt = find (not . (`elem` filt)) list
+
+solveSimple :: TraceMap -> Val -> Loc -> Maybe Val
+solveSimple rho val loc = case getTrace val of
     (TrLoc l') -> if loc == l' then Just val else Nothing
-    (TrUn op t) -> solveSimple rho loc (invUnOp op val t)
+    (TrUn op t) -> solveSimple rho (invUnOp op val t) loc
     (TrOp op t1 t2) -> let (i, j) = (evalTrace rho t1, evalTrace rho t2) in
-        (solveSimple rho loc =<< solveForJ op val i t2) `mplus`
-        (solveSimple rho loc =<< solveForI op val j t1)
+        (flip (solveSimple rho) loc =<< solveForJ op val i t2) `mplus`
+        (flip (solveSimple rho) loc =<< solveForI op val j t1)
 
 invUnOp :: UnOp -> Val -> Trace -> Val
 invUnOp Neg (Vn n _) = Vn (-n)
@@ -150,8 +166,17 @@ test =
         update = [Vd 6.5 (getTrace $ head t)]
         changes = synthFaithful (toTraceMap t) update in
     case changes of
-    Nothing -> Nothing
-    Just c -> Just $ updateProgram c prog
+    [] -> Nothing
+    (c:cs) -> Just $ updateProgram c prog
+
+test2 =
+    let source = "dfsa = arpeggio([0,4,7], (D 4 1/2)); main = line(dfsa) :+: (rest 1/4) :+: chord(dfsa);"
+        prog = fst $ parse source
+        (res, t) = parseEval source
+        update = [Vp (read "F") (TrOp Add (TrLoc (1,29)) (TrLoc (1,21)))
+                 ,Vn 4 (TrLoc (1,34))]
+        synthed = synthFaithful (toTraceMap t) update in
+    map (`updateProgram` prog) synthed
 
 updateProgram :: TraceMap -> Statement -> Statement
 updateProgram substm (Seq ss) = Seq (map (updateProgram substm) ss)
