@@ -17,6 +17,8 @@ import Data.Maybe (fromJust)
 -- We can undo it!
 -- Perform restored
 
+fibo = "fibo = (\\ n -> if n <= 1 then n else fibo(n-1) + fibo(n-2)); main = fibo(5);"
+
 program = "dfsa = arpeggio([0,4,7], (D 4 1/2)); main = line(dfsa) :+: (rest 1/4) :+: chord(dfsa);"
 
 states = fst $ parse program
