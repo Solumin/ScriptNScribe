@@ -7,7 +7,7 @@ basically an enum.) Plus we have two numeric literal types, ints and doubles.
 Expression traces: I'm not sure these are any different.
 Their prim ops: + - * / ^ % atan (???)
     Inversion results in Maybe, so not all ops have to be invertible.
-Our prim ops: + - * / :=: :+: (: and ++????)
+Our prim ops: + - * /
 
 A better idea might be to work "backwards".
 They based their design off the idea that user will be manipulating shapes,
@@ -21,9 +21,41 @@ along later. Pitch is ONLY +/- integers, so that's easy. Others are obviously
 more complex.
 
 OK, so what do I need to do to set up tracing?
-- Numeric Traces
-- Expression Traces
-- Map of locations to literals (basic traces)
+- Numeric Traces (Get these from parsing)
+- Expression Traces (get these from evaling!)
+- Map of locations to literals (That is, the numeric traces.)
+
+TRACES record A VALUE and its LOCATION -or- the EXPRESSION used to create it, IN
+TERMS OF other TRACES.
+- TrLoc Loc
+- TrOp op trace trace
+- TrUn op trace
+THESE ARE BOUND TO A VALUE. That is, we could just have [Val] be our "traces",
+though it might be useful to have the location easier to access.
+
+IN ADDITION, there is the MAPPING of LOCATIONS to CONSTANTS. This is GENERATED
+DURING PARSING, -if- I understand what they're using it for.
+
+REALLY they're the same thing -- the traces that are just locations -> val are
+contained in the list of all traces.
+
+So from eval we should get a LIST of TRACES (TrLoc and TrOp and TrUn). The ones
+that are TrLoc are the CONSTANTS. We all the constants during parse, and
+generate the expression ones during eval.
+Thing is, we're currently getting all the traces during eval by walking over
+the tree. This DOES NOT work. Consider "1/4" -- parse gives us 1 and 4, but
+eval only gives us (/ 1 4) so that's the only one we get afterward.
+The solution is to build the list of traces as we eval. That SHOULD capture all
+of them. But how to do that? Passing along a second part of the env is one
+option, but would require a LOT of rewriting.
+Consider evalBinOp:
+    evalExpr (BinOpExpr op e1 e2) = evalBinOp op (evalE e1) (evalE e2)
+You'd have to get the traces (evalE e1) and (evalE e2), add them to the list,
+then add trace from evalBinOp to the list. That's... a lot. It's not impossible
+but holy fuck it would be messy.
+This is a pretty good use case for the state monad, I think. Or more
+specifically the writer, since eval doesn't do anything besides record the
+traces.
 
 Currently, traces are lists of Expressions, specifically PitchClass, N and D,
 which have a location imbedded inside them.
@@ -53,6 +85,87 @@ If the user adjusts the output to be (Cs 4 1/4), (Fs 4 1/4), (A 4 1/4), it
 should synth [0, 4, 7] -> [-1, 4, 7] (well just the 0 changes) though it can
 also change (D 4 1/4) to (Cs 4 1/4)
 
+---
+OK, getting traces is done. Now to do the actual evaluation.
+Evaluation gives us:
+- Traces (list of traced vals) (from which we can extract mapping of locations
+  to constants in the original program)
+
+(1,1) -> 4
+Output: -4 = (TrUn Neg (TrLoc (1,1)))
+Update: -5 = (TrUn Neg (TrLoc (1,1)))
+Choose: (1,1)
+SimpleB will take this and apply the inverse op:
+5 = (TrLoc (1,1))
+Result: (1,1) -> 5
+
+In our parlance,
+(1,1) -> 4 is also (Vn 4 (TrLoc (1,1)))
+(Vn -5 (TrUn Neg (TrLoc (1,1))))
+SimpleB will take this and apply the inverse op:
+(Vn 5 (TrLoc (1,1)))
+
+(1,1) -> 4
+(1,2) -> 2
+Output: 6 = (TrOp Add (TrLoc (1,1), TrLoc(1,2)))
+Update: 7 = (TrOp Add (TrLoc (1,1), TrLoc(1,2)))
+Choose: (1,1)
+7 = (TrOp Add (TrLoc (1,1)) (TrLoc (1,2)))
+Invert over Sub, (1,1)
+Sub 7 (lookup (1,2)) -> 7 - 2 => 5
+Update: 5 = (TrLoc (1,1))
+Result: (1,1) -> 5
+
+InvL op (rho t1) val = t2
+InvR op val (rho t2) = t1
+
+Remember, we're solving for a single location. It may not be one of the two in
+the ops. So we have to take the union of solving the two branches.
+
+But why the two branches? Well, we have to choose *one* of them to eventually
+resolve to the base case. Recursion is the best way.
+
+-> TrLoc is the base case
+-> TrUn is just unwrapping, no branching needed.
+-> TrOp is more complex.
+
+I need an example to work though.
+(1,1) -> 4
+(1,2) -> 2
+(1,3) -> 3
++ (* (4 (-2))) 3 = -5
+Output: -5 = (TrOp Add (TrOp Mult (TrLoc (1,1)) (TrUn Neg (1,2))) (TrLoc (1,3)))
+Update: -9 = (TrOp Add (TrOp Mult (TrLoc (1,1)) (TrUn Neg (1,2))) (TrLoc (1.3)))
+---
+Choose: (1,1)
+-9 = (...) + 3 => -12 = (* (1,1) (-(1,2)))
+
+n = i op j
+n inv i = j
+n inv j = i
+
+8 = 6 + 2
+8 - 6 = 2
+8 - 2 = 6
+
+3 = 4 - 1
+4 - 3 = 1
+3 + 1 = 4
+
+3 = 6 / 2
+6 / 3 = 2
+6 * 2 = 6
+
+6 = 3 * 2
+6 / 3 = 2
+6 / 2 = 3
+
+D = C + 2
+D - C = 2
+D - 2 = C
+
+OK! That's working. Next step: MULTIPLE updates.
+{n1' = t1, ..., nm' = tm:
 ==============================
 Tracing (Notes from the paper)
 ==============================
