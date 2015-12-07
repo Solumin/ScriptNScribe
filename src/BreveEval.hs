@@ -14,8 +14,7 @@ import Control.Monad (msum)
 import Data.Function (on)
 import Data.List (intercalate, nubBy)
 import qualified Data.Map as Map
-import Data.Maybe (fromMaybe, catMaybes)
-import Data.Monoid (mappend)
+import Data.Maybe (fromMaybe)
 
 type Music = E.Music E.Pitch
 
