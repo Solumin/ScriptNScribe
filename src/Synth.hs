@@ -9,7 +9,7 @@ import BreveEval
 
 import qualified Euterpea as E
 
-import Control.Monad (liftM, liftM2, mplus)
+import Control.Monad (ap, liftM, liftM2, mplus)
 import qualified Data.Map.Strict as Map
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Tuple (swap)
@@ -32,20 +32,21 @@ getLocs' locs (TrLoc l) = [l]
 getLocs' locs (TrUn _ t) = getLocs' locs t
 getLocs' locs (TrOp _ t1 t2) = getLocs' locs t1 ++ getLocs' locs t2
 
-synthFaithful :: TraceMap -> TraceList -> TraceMap
-synthFaithful rho ups = Map.insert loc val rho
+synthFaithful :: TraceMap -> TraceList -> Maybe TraceMap
+synthFaithful rho ups = liftM (\v -> Map.insert loc v rho) val
     where
         up = head ups
         tr = getTrace up
         loc = getFirstLoc tr
-        val = fromMaybe up (solveSimple rho loc up) -- fail synth instead of orig val
+        val = solveSimple rho loc up -- fail synth instead of orig val
 
 solveSimple :: TraceMap -> Loc -> Val -> Maybe Val
 solveSimple rho loc val = case getTrace val of
     (TrLoc l') -> if loc == l' then Just val else Nothing
     (TrUn op t) -> solveSimple rho loc (invUnOp op val t)
-    (TrOp op t1 t2) -> let (n1, n2) = (evalTrace rho t1, evalTrace rho t2) in
-        mplus (solveForJ op val n1 t2) (solveForI op val n2 t1)
+    (TrOp op t1 t2) -> let (i, j) = (evalTrace rho t1, evalTrace rho t2) in
+        (solveSimple rho loc =<< solveForJ op val i t2) `mplus`
+        (solveSimple rho loc =<< solveForI op val j t1)
 
 invUnOp :: UnOp -> Val -> Trace -> Val
 invUnOp Neg (Vn n _) = Vn (-n)
@@ -88,12 +89,11 @@ solveForJ Div (Vd n _) (Just (Vd i _)) = Just . Vd (i / n)
 solveForI :: BinOp -> Val -> Maybe Val -> Trace -> Maybe Val
 solveForI _ _ Nothing = const Nothing
 
-solveForI Add (Vp p _) (Just (Vn n _)) = Just . Vp (pitches !! ((E.pcToInt p - (fromInteger n)) `mod` 12))
+solveForI Add (Vp p _) (Just (Vn n _)) = Just . Vp (pitches !! ((E.pcToInt p - fromInteger n) `mod` 12))
     where pitches = [E.C, E.Cs, E.D, E.Ds, E.E, E.F, E.Fs, E.G, E.Gs, E.A, E.As, E.B]
 solveForI Add n j = solveForJ Add n j
 
 solveForI Mult n j = solveForJ Mult n j
-
 
 solveForI Sub (Vn n _) (Just (Vn j _)) = Just . Vn (j + n)
 solveForI Sub (Vd n _) (Just (Vn j _)) = Just . Vd (fromInteger j + n)
@@ -122,10 +122,10 @@ getFirstLoc (TrLoc l) = l
 getFirstLoc (TrUn _ t) = getFirstLoc t
 getFirstLoc (TrOp _ t1 t2) = getFirstLoc t2
 
-test :: TraceMap
+test :: Maybe TraceMap
 test =
-    let (p,t) = parseEval "main = (D+3 2 1)"
-        update = [(Vp E.G (getTrace $ head t))] in
+    let (p,t) = parseEval "main = 3.5 + (1.0 + 0.5)"
+        update = [Vd 6.5 (getTrace $ head t)] in
     synthFaithful (toTraceMap t) update
 
 {-
