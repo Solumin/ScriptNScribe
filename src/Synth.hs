@@ -9,9 +9,10 @@ import BreveEval
 
 import qualified Euterpea as E
 
-import Control.Monad (ap, liftM, liftM2, mplus)
+import Control.Monad (liftM, liftM2, mplus, zipWithM)
 import qualified Data.Map.Strict as Map
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.List ((\\))
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import Data.Tuple (swap)
 
 type TraceMap = Map.Map Loc Val
@@ -33,12 +34,31 @@ getLocs' locs (TrUn _ t) = getLocs' locs t
 getLocs' locs (TrOp _ t1 t2) = getLocs' locs t1 ++ getLocs' locs t2
 
 synthFaithful :: TraceMap -> TraceList -> Maybe TraceMap
-synthFaithful rho ups = liftM (\v -> Map.insert loc v rho) val
-    where
-        up = head ups
-        tr = getTrace up
-        loc = getFirstLoc tr
-        val = solveSimple rho loc up -- fail synth instead of orig val
+synthFaithful rho updates = let
+    allLocs = map (getLocs . getTrace) updates
+    chosen = chooseSemiUnique allLocs
+    newTraces = zipWithM (solveSimple rho) chosen updates in
+    case newTraces of
+        Nothing -> Nothing
+        Just vals -> Just $ foldl (\m (l,v) -> Map.insert l v m) rho (zip chosen vals)
+
+-- synthFaithful :: TraceMap -> TraceList -> Maybe TraceMap
+-- synthFaithful rho ups = liftM (\v -> Map.insert loc v rho) val
+--     where
+--         up = head ups
+--         tr = getTrace up
+--         loc = getFirstLoc tr
+--         val = solveSimple rho loc up -- fail synth instead of orig val
+
+-- Choose the first element of the sublist that has not been selected previously
+-- from another list.
+-- If all elements from the sublist have already been used, choose the first
+-- one.
+chooseSemiUnique :: Eq a => [[a]] -> [a]
+chooseSemiUnique =
+    foldl (\cs ls -> cs ++
+            [if all (`elem` cs) ls then head ls else head $ filter (not . (`elem` cs)) ls])
+        []
 
 solveSimple :: TraceMap -> Loc -> Val -> Maybe Val
 solveSimple rho loc val = case getTrace val of
@@ -122,11 +142,40 @@ getFirstLoc (TrLoc l) = l
 getFirstLoc (TrUn _ t) = getFirstLoc t
 getFirstLoc (TrOp _ t1 t2) = getFirstLoc t2
 
-test :: Maybe TraceMap
+test :: Maybe Statement
 test =
-    let (p,t) = parseEval "main = 3.5 + (1.0 + 0.5)"
-        update = [Vd 6.5 (getTrace $ head t)] in
-    synthFaithful (toTraceMap t) update
+    let source = "main = 3.5 + (1.0 + 0.5)"
+        prog = fst $ parse source
+        (res,t) = parseEval source
+        update = [Vd 6.5 (getTrace $ head t)]
+        changes = synthFaithful (toTraceMap t) update in
+    case changes of
+    Nothing -> Nothing
+    Just c -> Just $ updateProgram c prog
+
+updateProgram :: TraceMap -> Statement -> Statement
+updateProgram substm (Seq ss) = Seq (map (updateProgram substm) ss)
+updateProgram substm (Assign n e) = Assign n (updateExpr substm e)
+updateProgram substm (Return e) = Return (updateExpr substm e)
+
+updateExpr :: TraceMap -> Expr -> Expr
+updateExpr m e = let updateE = updateExpr m in
+    case e of
+    (PitchClass _ l) -> maybe e (\(Vp p _) -> PitchClass p l) (Map.lookup l m)
+    (N _ l) -> maybe e (\(Vn n _) -> N n l) (Map.lookup l m)
+    (D _ l) -> maybe e (\(Vd d _) -> D d l) (Map.lookup l m)
+    (B _) -> e
+    (Note p o d) -> Note (updateE p) (updateE o) (updateE d)
+    (Rest d) -> Rest (updateE d)
+    (UnOpExpr op a) -> UnOpExpr op (updateE a)
+    (BinOpExpr op a b) -> BinOpExpr op (updateE a) (updateE b)
+    (Snippet ss) -> Snippet $ map updateE ss
+    (List ls) -> List $ map updateE ls
+    (Var _) -> e
+    (Lambda {}) -> e
+    (App s args) -> App s (map updateE args)
+    (If c t f) -> If (updateE c) (updateE t) (updateE f)
+    (Case c ps) -> Case (updateE c) (map (\(p,e) -> (p, updateE e)) ps)
 
 {-
  - This is going to be really simple for now. Very, very basic tracing.
