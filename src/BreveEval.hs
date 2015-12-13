@@ -284,6 +284,7 @@ matchCase (p,v) =
     (Prest d, Vrest d') -> matchCase (d, d')
     (Psplit a r, Vlist (v:vs)) -> joinEnv (matchCase (a, v)) (matchCase (r, Vlist vs))
     (Psplit a r, Vseq h t) -> joinEnv (matchCase (a, h)) (matchCase (r, t))
+    (Psplit a (Psnip []), v) -> matchCase (a, v)
     (Plist (l:ls), Vlist (v:vs)) ->
         if length ls == length vs
         then joinEnv (matchCase (l,v)) (matchCase (Plist ls, Vlist vs))
@@ -292,6 +293,8 @@ matchCase (p,v) =
     (Psnip (s:ss), Vseq h t) -> joinEnv (matchCase (s,h)) (matchCase (Psnip ss, t))
     (Psnip [s], Vnote{}) -> matchCase(s, v)
     (Psnip [s], Vrest _) -> matchCase(s, v)
+    -- (Psnip [], _) -> There's nothing to match an empty Psnip to! Instead,
+    -- match single element split pattern
     (Pvar s, v) -> Just [(s, v)]
     (Ppat s p, v) -> joinEnv (Just [(s, v)]) (matchCase (p,v))
     (Pwc, _) -> Just []
