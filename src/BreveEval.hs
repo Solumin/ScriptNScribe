@@ -283,6 +283,7 @@ matchCase (p,v) =
        concat <$> mapM matchCase [(p, p'), (o, o'), (d, d')]
     (Prest d, Vrest d') -> matchCase (d, d')
     (Psplit a r, Vlist (v:vs)) -> joinEnv (matchCase (a, v)) (matchCase (r, Vlist vs))
+    (Psplit a r, Vseq h t) -> joinEnv (matchCase (a, h)) (matchCase (r, t))
     (Plist (l:ls), Vlist (v:vs)) ->
         if length ls == length vs
         then joinEnv (matchCase (l,v)) (matchCase (Plist ls, Vlist vs))
