@@ -1,0 +1,75 @@
+* {
+    padding: 0;
+    margin: 0;
+}
+
+html, body {
+    height: 100%;
+}
+
+body {
+    background-color: lightgray;
+}
+
+.header {
+    background-color: black;
+    color: white;
+    width: 100%;
+    padding: 15px;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+.container {
+    display: inline-block;
+    background-color: orange;
+    width: 100%;
+    min-height: 100%;
+    padding: 15px auto;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+.codebox {
+    display: inline-block;
+    vertical-align: top;
+    width: 45%;
+    max-width: 45%;
+    min-height: 100%;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+.codearea {
+    width: 99%;
+    height: 100%;
+}
+
+.resbox {
+    display: inline-block;
+    vertical-align: top;
+    width: 45%;
+    max-width: 45%;
+    min-height: 100%;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+.valbox {
+}
+
+.controls {
+    display: inline-block;
+    vertical-align: top;
+    background-color: red;
+    width: 10%;
+    height: 50px;
+    padding: 5px;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
