@@ -32,7 +32,8 @@ setup window = do
 
     on UI.click sync $ const $ do
         source <- get UI.value code
-        element code2 # set UI.value source
+        let (_,t) = BreveEval.parseEval source
+        element code2 # set UI.value (unlines $ map show t)
 
     on UI.click play $ const $ do
         source <- get UI.value code
