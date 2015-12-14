@@ -124,10 +124,34 @@ instance Show BinOp where
     show Cons = ":"
     show Cat = "++"
 
+instance Read BinOp where
+    readsPrec _ (':':s) = case s of
+        ('+':':':s') -> [(SeqOp, s')]
+        ('=':':':s') -> [(ParOp, s')]
+        _ -> [(Cons, s)]
+    readsPrec _ ('+':s) = case s of
+        ('+':s') -> [(Cat, s')]
+        _ -> [(Add, s)]
+    readsPrec _ ('*':s) = [(Mult, s)]
+    readsPrec _ ('/':s) = [(Div, s)]
+    readsPrec _ ('-':s) = [(Sub, s)]
+    readsPrec _ ('!':'=':s) = [(Neq, s)]
+    readsPrec _ ('=':'=':s) = [(Eq, s)]
+    readsPrec _ ('<':s) = case s of
+        ('=':s') -> [(Lte, s')]
+        _ -> [(Lt, s)]
+    readsPrec _ ('>':s) = case s of
+        ('=':s') -> [(Gte, s')]
+        _ -> [(Gt, s)]
+
 data UnOp = Not | Neg deriving (Eq)
 instance Show UnOp where
     show Not = "!"
     show Neg = "-"
+
+instance Read UnOp where
+    readsPrec _ ('!':s) = [(Not, s)]
+    readsPrec _ ('-':s) = [(Neg, s)]
 
 data Statement = Assign String Expr | Return Expr | Seq [Statement] deriving (Eq)
 instance Show Statement where

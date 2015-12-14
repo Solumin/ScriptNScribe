@@ -26,13 +26,13 @@ type Env = (EvalRes, TraceList)
 emptyEnv :: Env
 emptyEnv = ([],[])
 
-data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq)
+data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq, Read, Show)
 
-instance Show Trace where
-    show (TrLoc l) = show l
-    show (TrOp op a b) = '(' : shows a (' ' : shows op (' ' : shows b ")"))
-    show (TrUn Neg x) = "Neg" ++ (show x)
-    show (TrUn Not x) = "Not" ++ (show x)
+-- instance Show Trace where
+--     show (TrLoc l) = show l
+--     show (TrOp op a b) = '(' : shows a (' ' : shows op (' ' : shows b ")"))
+--     show (TrUn Neg x) = "Neg" ++ (show x)
+--     show (TrUn Not x) = "Not" ++ (show x)
 
 data Val = Vp E.PitchClass Trace
          | Vn Integer Trace
@@ -46,9 +46,9 @@ data Val = Vp E.PitchClass Trace
          | Vfunc Expr       -- Lambda
 
 instance Show Val where
-    show (Vp p t) = "Val_PitchClass <" ++ shows p (' ' : shows t ">")
-    show (Vn n t) = "Val_Integer <" ++ shows n (' ' : shows t ">")
-    show (Vd d t) = "Val_Double <" ++ shows d (' ' :  shows t ">")
+    show (Vp p t) = "Pitch " ++ shows p (' ' : show t)
+    show (Vn n t) = "Int " ++ shows n (' ' : show t)
+    show (Vd d t) = "Double " ++ shows d (' ' :  show t)
     show (Vb b) = "Val_Bool <" ++ shows b ">"
     show (Vnote p o d) = "Val_Note <" ++ unwords (map show [p,o,d]) ++ ">"
     show (Vrest r) = "Val_Rest <" ++ shows r ">"
