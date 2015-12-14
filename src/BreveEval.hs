@@ -91,7 +91,7 @@ getTrace val = case val of
     (Vd _ t) -> t
 
 -- Takes source code and parses it to generate the AST and parse traces
-parse :: String -> (Statement, Traces)
+parse :: String -> Statement
 parse input = case runParser breveParser [] "input" input of
     Left err -> error (show err)
     Right st -> st
@@ -102,7 +102,7 @@ parseEval = parseEvalEnv initEnv
 
 parseEvalEnv :: Env -> String -> Env
 parseEvalEnv env source =
-    let (prog, traces) = parse source
+    let prog = parse source
         (evalRes, exprTraces) = eval env prog in
     (evalRes, nubBy ((==) `on` getTrace) exprTraces)
 

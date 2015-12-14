@@ -195,11 +195,8 @@ TokenParser { identifier = b_identifier
 -- sense. (The final separator *is* optional.)
 b_semiSep1 p = sepEndBy p b_semi
 
-breveParser :: Parser (Statement, Traces)
-breveParser = do
-    p <- b_whitespace >> parseSeq <* eof
-    s <- getState
-    return (p, s)
+breveParser :: Parser Statement
+breveParser = b_whitespace >> parseSeq <* eof
 
 -- ===================
 -- Parsing Statements
@@ -287,7 +284,6 @@ parsePitchClass = do
     pc <- parser
     loc <- getLoc
     let pcc = PitchClass (read pc) loc
-    addState pcc
     return pcc
     where
         parser = choice (map (try . b_symbol) pitchClasses) <?> msg
@@ -309,7 +305,6 @@ parseNum = do
     res <- case p of
         Left i -> N (signed sign i) <$> getLoc
         Right d -> D (signed sign d) <$> getLoc
-    addState res
     return res
     where signed s = (*) (maybe 1 (const (-1)) s)
 
@@ -400,11 +395,6 @@ getLoc = do
     pos <- getPosition
     let loc = (sourceLine pos, sourceColumn pos)
     return loc
-
-addState :: Expr -> Parser ()
-addState s = do
-    modifyState ((:) s)
-    return ()
 
 durToStr :: E.Dur -> String
 durToStr d
