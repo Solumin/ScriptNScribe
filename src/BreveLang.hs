@@ -280,11 +280,7 @@ parseVar :: Parser Expr
 parseVar = Var <$> b_identifier
 
 parsePitchClass :: Parser Expr
-parsePitchClass = do
-    pc <- parser
-    loc <- getLoc
-    let pcc = PitchClass (read pc) loc
-    return pcc
+parsePitchClass = PitchClass <$> (read <$> parser) <*> getLoc
     where
         parser = choice (map (try . b_symbol) pitchClasses) <?> msg
         msg = "capitol letter A-G, possibly followed by ff, f, s or ss"
