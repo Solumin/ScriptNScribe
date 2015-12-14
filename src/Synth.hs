@@ -164,7 +164,7 @@ getFirstLoc (TrOp _ t1 t2) = getFirstLoc t2
 test :: Maybe Statement
 test =
     let source = "main = 3.5 + (1.0 + 0.5)"
-        prog = fst $ parse source
+        prog = parse source
         (res,t) = parseEval source
         update = [Vd 6.5 (getTrace $ head t)]
         changes = synthFaithful (toTraceMap t) update in
@@ -174,7 +174,7 @@ test =
 
 test2 =
     let source = "dfsa = arpeggio([0,4,7], (D 4 1/2)); main = line(dfsa) :+: (rest 1/4) :+: chord(dfsa);"
-        prog = fst $ parse source
+        prog = parse source
         (res, t) = parseEval source
         update = [Vp (read "F") (TrOp Add (TrLoc (1,29)) (TrLoc (1,21)))
                  ,Vn 4 (TrLoc (1,34))]
