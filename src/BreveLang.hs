@@ -12,8 +12,8 @@ module BreveLang
 {-
 Breve:
 pitchclass ::= A | B ...
-integer ::= (+|-) digit (digit)*
-float ::= (+|-) integer '.' digit (digit)*
+integer ::= (-) digit (digit)*
+float ::= (-) integer '.' digit (digit)*
 boolean ::= 'true' | 'false'
 note = '(' expr expr expr ')'
 rest ::= '(' "rest" expr ')'
@@ -294,15 +294,14 @@ parseBool = parseTrue <|> parseFalse
     parseTrue = b_reserved "true" *> return (B True) <?> "true"
     parseFalse = b_reserved "false" *> return (B False) <?> "false"
 
+-- So here's the deal: Many languages have a unary + operator. It doesn't
+-- actually do anything beyond type promotion. (e.g. +x if x is an unsigned short
+-- yields x as a signed integer) In other languages it's a nop.
+-- Since "-" (unary minus) is handled as an operation, I'm simplifying this
+-- funcion to just parse numbers.
+-- (There was a bug here: "+5" would return -5.)
 parseNum :: Parser Expr
-parseNum = do
-    sign <- optionMaybe (oneOf "-+")
-    p <- b_number
-    res <- case p of
-        Left i -> N (signed sign i) <$> getLoc
-        Right d -> D (signed sign d) <$> getLoc
-    return res
-    where signed s = (*) (maybe 1 (const (-1)) s)
+parseNum = either N D <$> b_number <*> getLoc
 
 -- TODO this is terribly hacky, but it's the easiest way to make sure x (y + z)
 -- is treated as 2 expressions, not as a single function application! (note the
