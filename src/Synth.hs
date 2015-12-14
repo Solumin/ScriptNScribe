@@ -47,6 +47,9 @@ getLocs' locs (TrOp _ t1 t2) = getLocs' locs t1 ++ getLocs' locs t2
 --    Only two update sets are actually valid, though... the paper may try to
 --    allow them? I think it handles multiple bindings by just doing the
 --    rightmost.
+-- We have to turn the [[Val]] into [[(Loc,Val]] because it's impossible to
+-- compare Val's, due to how they're set up in BreveEval. Fortunately, comparing
+-- locs makes a lot more sense in this domain.
 
 synthFaithful :: TraceMap -> TraceList -> [TraceMap]
 synthFaithful rho updates = let

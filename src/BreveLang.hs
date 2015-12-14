@@ -46,7 +46,7 @@ pattern ::= pitchclass
           | '[' ']'
           | '(' pat ':' pat (':' pat)* ')'
           | '{' pat (',' pat)* '}'
-          | '{' '}'
+          | '(' pat ':' '{' '}' ')'
           | identifier
           | '_'
 

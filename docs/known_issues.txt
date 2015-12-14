@@ -1,0 +1,8 @@
+Known Issues with Breve:
+
+- Empty Snippets: What is an empty snippet? It parses, but cannot be evaluated.
+    -> Perhaps the best solution is {} = {(rest 0)} (or just (rest 0)), which is
+at least superficially consistent with Euterpea.
+    -> On the other hand, {} in a pattern behaves just like [], AS LONG AS it's
+embedded in a pattern, e.g. (x:{}). Just matching {} isn't possible, since the
+empty snippet is undefined.

@@ -31,7 +31,8 @@ data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq)
 instance Show Trace where
     show (TrLoc l) = show l
     show (TrOp op a b) = '(' : shows a (' ' : shows op (' ' : shows b ")"))
-    show (TrUn op x) = shows op (show x)
+    show (TrUn Neg x) = "Neg" ++ (show x)
+    show (TrUn Not x) = "Not" ++ (show x)
 
 data Val = Vp E.PitchClass Trace
          | Vn Integer Trace
