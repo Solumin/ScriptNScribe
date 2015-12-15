@@ -21,7 +21,7 @@ fibo = "fibo = (\\ n -> if n <= 1 then n else fibo(n-1) + fibo(n-2)); main = fib
 
 program = "dfsa = arpeggio([0,4,7], (D 4 1/2));\nmain = line(dfsa) :+: (rest 1/4) :+: chord(dfsa);"
 
-states = fst $ parse program
+states = parse program
 
 traces = snd $ parseEval program
 
@@ -36,7 +36,7 @@ synthed = synthFaithful (toTraceMap traces) update
 
 newprog = map (show . (`updateProgram` states)) synthed
 
-states' = map (fst . parse) newprog
+states' = map parse newprog
 
 traces' = map (snd . parseEval) newprog
 
