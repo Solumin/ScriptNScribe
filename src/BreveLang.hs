@@ -59,13 +59,10 @@ import Data.List (intercalate)
 import Text.Parsec
 import Text.Parsec.Expr
 import Text.Parsec.Language (emptyDef)
+import Text.Parsec.String (Parser)
 import Text.Parsec.Token
 
--- Poor man's map
 type Loc = (Int, Int)
-type Traces = [Expr]
-
-type Parser = Parsec String Traces
 
 data Expr = PitchClass E.PitchClass Loc
           | N Integer Loc | D Double Loc

@@ -93,7 +93,7 @@ getTrace val = case val of
 
 -- Takes source code and parses it to generate the AST and parse traces
 parse :: String -> Statement
-parse input = case runParser breveParser [] "input" input of
+parse input = case runParser breveParser () "input" input of
     Left err -> error (show err)
     Right st -> st
 
