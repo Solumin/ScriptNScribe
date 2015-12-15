@@ -15,15 +15,17 @@ setup window = do
     return window # set UI.title "Script-n-Scribe"
     codeBox <- codebox
     traceBox <- codebox # set UI.value "Music goes here..."
-    snippetBox <- codebox # set UI.style [("display", "none")]
+    snippetBox <- codebox # set UI.style [("display", "none")] # set (UI.attr "readonly") "readonly"
 
     syncProg <- controlButton "Sync -->"
     syncMusic <- controlButton "<-- Sync"
     play <- controlButton "Play"
+
     viewSnips <- controlButton "View Snippets"
+    viewTraces <- controlButton "View Traces" # set UI.enabled False
 
     controls <- UI.div #. "controls" #+
-        map element [syncProg, syncMusic, play, viewSnips]
+        map element [syncProg, syncMusic, play, viewTraces, viewSnips]
 
     mainbox <- UI.div #. "container" #+
         [ element codeBox
@@ -56,13 +58,36 @@ setup window = do
         source <- get UI.value codeBox
         liftIO (BreveEval.perform source)
 
+    on UI.click viewTraces $ const $ do
+        source <- get UI.value codeBox
+        if null source then return codeBox
+        -- no traces to get, still swap to window
+        else
+            let traces = snd $ BreveEval.parseEval source in
+            element traceBox # set UI.value (unlines $ map show traces)
+        -- switch out right-side boxes
+        element traceBox # set UI.style [("display", "inline-block")]
+        element snippetBox # set UI.style [("display", "none")]
+        -- disable this button
+        element viewTraces # set UI.enabled False
+        -- enable the other two
+        element viewSnips # set UI.enabled True
+        -- element viewMusic # set UI.enabled True
+
     on UI.click viewSnips $ const $ do
+        -- get snippets
         source <- get UI.value codeBox
         let snippets = getSnippets $ fst $ BreveEval.parseEval source
+        -- show snippets
         element snippetBox # set UI.value (unlines $ map showSnippet snippets)
-        liftIO (putStrLn $ unlines $ map showSnippet snippets)
+        -- switch out right-side boxes
         element snippetBox # set UI.style [("display", "inline-block")]
         element traceBox # set UI.style [("display", "none")]
+        -- disable this button
+        element viewSnips # set UI.enabled False
+        -- enable the other two
+        element viewTraces # set UI.enabled True
+        -- element viewMusic # set UI.enabled True
 
 codebox :: UI Element
 codebox = do
