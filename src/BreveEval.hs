@@ -16,24 +16,44 @@ import Data.List (intercalate, nubBy)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 
+-- BreveEval.hs deals entirely with the evaluation of Breve programs. This
+-- includes running the parser and building traces for later synthesis.
+
+-- Music for Breve is entirely centered around Pitches.
+-- (Pitches are actually tuples: (PitchClass, Octave))
 type Music = E.Music E.Pitch
 
+-- Binding: Binds a Value to a particular name
 type Binding = (String, Val)
+-- The result of evaluating a program is a list of bindings.
 type EvalRes = [Binding]
+-- Vals are traces for Breve. Evaluating a program also returns the list of
+-- traced values.
 type TraceList = [Val]
+-- The final "environment" returned by evaluating
 type Env = (EvalRes, TraceList)
 
 emptyEnv :: Env
 emptyEnv = ([],[])
 
+-- There are 2 major kinds of traces used in tace-based program synthesis:
+-- 1. Location traces, which record the source code locations of literal.
+-- 2. Epxression traces, which record the sequence of operations for calculating
+-- a value. Since we have binary and unary operators, we have 2 expression
+-- trace types.
 data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq, Read, Show)
 
+-- Custom Show instance deprecated for parsing of Values for tracing in UI.
 -- instance Show Trace where
 --     show (TrLoc l) = show l
 --     show (TrOp op a b) = '(' : shows a (' ' : shows op (' ' : shows b ")"))
 --     show (TrUn Neg x) = "Neg" ++ (show x)
 --     show (TrUn Not x) = "Not" ++ (show x)
 
+-- Val represents the final value of evaluating a Breve program.
+-- Most useful Breve programs will Music value: Vnote, Vrest, Vseq or Vpar (see
+-- toMusic below). However, these are all built up from other Vals, and we can't
+-- expect every Breve program to only return those values.
 data Val = Vp E.PitchClass Trace
          | Vn Integer Trace
          | Vd Double Trace
@@ -57,6 +77,14 @@ instance Show Val where
     show (Vlist l) = "Vlist [" ++ intercalate ", " (map show l) ++ "]"
     show (Vfunc l) = "Vfunc <" ++ shows l ">"
 
+-- Vals can only be compared to vals of the same kind.
+-- This makes BinOp easier to evaluate, but it otherwise bites us in the ass
+-- when you want to do anything that requires Eq, since we only have a partial
+-- definition.
+-- In practice, the only useful things we want to do usually just involve the
+-- uniqueness of the traces of literals, which is means we can just use Traces
+-- for equality.
+-- TODO Should Eq a b = False if a and b are different kinds of Vals?
 instance Eq Val where
     (Vp a _) == (Vp b _) = a == b
     (Vn a _) == (Vn b _) = a == b
@@ -71,6 +99,7 @@ instance Eq Val where
     (Vlist a) == (Vlist b) = a == b
     a == b = error $ unwords ["Cannot compare", show a, "and", show b]
 
+-- Same issue here as with Eq
 instance Ord Val where
     (Vp a _) <= (Vp b _) = a <= b
     (Vn a _) <= (Vn b _) = a <= b
@@ -85,22 +114,28 @@ instance Ord Val where
     (Vlist a) <= (Vlist b) = a <= b
     a <= b = error $ unwords ["Cannot compare", show a, "and", show b]
 
+-- Returns the trace of a given literal
 getTrace :: Val -> Trace
 getTrace val = case val of
     (Vp _ t) -> t
     (Vn _ t) -> t
     (Vd _ t) -> t
 
--- Takes source code and parses it to generate the AST and parse traces
+-- Takes source code and parses it to generate the AST.
 parse :: String -> Statement
 parse input = case runParser breveParser () "input" input of
     Left err -> error (show err)
     Right st -> st
 
--- Produce the Environment defined by a program.
+-- Produce the Environment defined by a program. eval has more details on the
+-- actual evaluation. Note that this produces the whole environment, not the
+-- Value.
 parseEval :: String -> Env
 parseEval = parseEvalEnv initEnv
 
+-- parseEvalEnv allows for an arbitrary initial environment to be used during
+-- evaluation. This could be used to chain together program executions, for
+-- example, to allow multi-file execution.
 parseEvalEnv :: Env -> String -> Env
 parseEvalEnv env source =
     let prog = parse source
@@ -111,16 +146,19 @@ parseEvalEnv env source =
 -- Breve. initEnv loads the prelude so it can be used in parseEval.
 initEnv = parseEvalEnv emptyEnv prelude
 
--- Takes source code and evaluates the "main" expression (load Prelude)
+-- Takes source code and evaluates the "main" expression. The Prelude is loaded
+-- before execution.
 run :: String -> Val
 run = runEnv initEnv
 
--- Same as run, but with a given initial environment. (i.e. no Prelude)
+-- Same as run, but with a given initial environment. (i.e. no Prelude if
+-- emptyEnv is used, or you could chain together executions.)
 runEnv :: Env -> String -> Val
 runEnv env source =
     fromMaybe (error "No main to evaluate!") (lookup "main" (fst $ parseEvalEnv env source))
 
--- Transforms a Val into a Music object that can be played.
+-- Transforms a Val into a Music object that can be played. This is only defined
+-- for Vnote, Vrest, Vseq and Vpar.
 toMusic :: Val -> Music
 toMusic (Vnote (Vp p _) o d) = E.note (valToDur d) (p, valToOct o)
 toMusic (Vrest d) = E.rest (valToDur d)
@@ -128,7 +166,7 @@ toMusic (Vseq a b) = toMusic a E.:+: toMusic b
 toMusic (Vpar a b) = toMusic a E.:=: toMusic b
 toMusic v = error $ "Cannot create a music object from " ++ show v
 
--- Performs the Music represented by the program.
+-- Performs the Music represented by the "main" of the program.
 perform :: String -> IO()
 perform = Euterpea.play . toMusic . run
 
@@ -142,14 +180,16 @@ perform = Euterpea.play . toMusic . run
 -- Return statements do the same with the name "return" -- which means there
 -- must only be one per function, at the end of the function body!
 -- Sequence statements are evaluated top-to-bottom, building the environment as
--- each component statement is evaluated.
+-- each component statement is evaluated. There is no initial interpretation or
+-- first-pass. The order of definitions matters!
 eval :: Env -> Statement -> Env
 eval env (Seq ss) = foldl eval env ss
 eval env@(bs, ts) (Assign n e) = let (val, traces) = evalExpr env e in ((n,val):bs, traces ++ ts)
 eval env@(bs, ts) (Return e) = let (val, traces) = evalExpr env e in (("return",val):bs, traces ++ ts)
 
 -- logIt is a predicate for determining if a Val should be added to the traces.
--- Only those Vals that have Trace in their definition are logged.
+-- Only those Vals that have Trace in their definition are logged. This is
+-- primarily used when evaluating complex expressions.
 logIt :: Val -> Bool
 logIt val = case val of
     (Vp _ _) -> True
@@ -163,16 +203,21 @@ logIt val = case val of
     (Vlist vs) -> False
     (Vfunc _) -> False
 
+-- evalExpr is the workhorse here: Given an environment and an expression, it
+-- returns a value and the list of traces associated with that value.
+-- Remember we have to have a trace for every base value (numeric value or
+-- pitchclass) in the program, so we have to have a way to pass those traces
+-- around! e.g. a = 1; b = 2; c = 1 + 2 is 3 traces!
 evalExpr :: Env -> Expr -> (Val, TraceList)
 evalExpr env expr =
     let evalE = evalExpr env
-        both v = (v, [v])   -- v is returned and added to trace
-        with (v,t) tr = (v, t ++ tr) -- combine traces
-        only v = (v, []) in -- return only v
+        both v = (v, [v])           -- v is returned and added to trace
+        with (v,t) tr = (v, t ++ tr)-- combine traces
+        only v = (v, []) in         -- return only v, no other traces
     case expr of
-    (PitchClass p l) -> let v = Vp p (TrLoc l) in both v
-    (N n l) -> let v = Vn n (TrLoc l) in both v
-    (D d l) -> let v = Vd d (TrLoc l) in both v
+    (PitchClass p l) -> both $ Vp p (TrLoc l)
+    (N n l) -> both $ Vn n (TrLoc l)
+    (D d l) -> both $ Vd d (TrLoc l)
     (B b) -> only $ Vb b
     (UnOpExpr op e) ->
         let (v1, t) = evalE e
@@ -195,12 +240,15 @@ evalExpr env expr =
     (List ls) ->
         let (vals, traces) = unzip $ map evalE ls in (Vlist vals, concat traces)
     (Var s) -> let v = lookupVar env s in if logIt v then both v else only v
-    l@(Lambda _ _) -> only $ Vfunc l
+    l@(Lambda _ _) -> only $ Vfunc l -- Lambda is weird
     (App name args) ->
         let (vargs, traces) = unzip $ map evalE args
             res = evalApp env name vargs in
         -- if is loggable, res's tracelist contains res already
         with res (concat traces)
+    -- The traces inside If conditions are returned, but not those of the arms.
+    -- TODO why? Is this acceptable? (Same for cases) (Trace-based synth doesn't
+    -- care about control flow)
     (If c t f) ->
         let (cond, tc) = evalE c
             res = evalE $ evalIf cond t f in
@@ -209,6 +257,11 @@ evalExpr env expr =
         let (cond, tc) = evalE c
             res = evalCase env cond cases in
         with res tc
+
+-- Below are type checking functions, used to make sure the correct Vals are
+-- used to construct notes, rests and the like.
+-- Note that we don't use any type checking for Lists, even though those are
+-- nominally homogeneous.
 
 note :: Val -> Val -> Val -> Val
 note p@(Vp{}) o@(Vn{}) d = case d of
@@ -243,6 +296,12 @@ snippet (_:vs) = error "A snippet should only contain Note or Rest objects"
 lookupVar :: Env -> String -> Val
 lookupVar env name = fromMaybe (error $ shows name " is undefined." ++ show env) (lookup name $ fst env)
 
+-- EvalApp is somewhat complex.
+-- 1. Look for the function with the given name (lookupVar)
+-- 2. Match the patterns in the lambda parameter list with the given arguments.
+-- 3. Eval the function body (a Seq) with the arguments added to the environment
+-- 4. Return the result of the "return" statement, along with any traces from
+-- the func body.
 evalApp :: Env -> String -> [Val] -> (Val, TraceList)
 evalApp env@(bs,ts) name args =
     let (Vfunc (Lambda params body)) = lookupVar env name
@@ -272,6 +331,10 @@ evalCase env@(bs,ts) cond cases =
         Just (expr, env') -> evalExpr (env' ++ bs, ts) expr
         Nothing -> error "Non-exhaustive patterns in Breve case statement."
 
+-- matchCase defines the semantics of patterns. They're mostly straightforward:
+-- like Pattern with like Value; variables return a binding; wildcards match
+-- anything.
+-- Things get weird with empty snippets though.
 matchCase :: (Pat, Val) -> Maybe EvalRes
 matchCase (p,v) =
     let joinEnv a b = (++) <$> a <*> b in
@@ -310,6 +373,12 @@ evalUnOp Neg v = case v of
     (Vd d l) -> Vd (-d) (TrUn Neg l)
     _ -> error "Negation is defined for only numbers"
 
+-- evalBinOp is a lot of code but is otherwise quite simple.
+-- All of the math ops are defined for integers and doubles.
+-- Addition and Subtraction are defined for pitch op num, but ONLY pitch op num;
+-- num op pitch makes no sense.
+-- With each operator we build up the related trace, but only for the numeric
+-- operators.
 evalBinOp :: BinOp -> Val -> Val -> Val
 
 evalBinOp Add (Vd d1 l1) (Vd d2 l2) = Vd (d1 + d2) (TrOp Add l1 l2)
@@ -340,6 +409,8 @@ evalBinOp Div (Vd d1 l1) (Vn n2 l2) = Vd (d1 / fromInteger n2) (TrOp Div l1 l2)
 evalBinOp Div (Vn n1 l1) (Vd d2 l2) = Vd (fromInteger n1 / d2) (TrOp Div l1 l2)
 evalBinOp Div (Vn n1 l1) (Vn n2 l2) = Vd (fromInteger n1 / fromInteger n2) (TrOp Div l1 l2)
 
+-- SeqOp nominally combines snippets ('linearly', that is, a :+: b means b is
+-- played after a) but we use it to add note and things to snippets.
 evalBinOp SeqOp a b = Vseq (check a) (check b)
     where
     check v = case v of
@@ -349,6 +420,8 @@ evalBinOp SeqOp a b = Vseq (check a) (check b)
         (Vpar _ _) -> v
         _ -> error $ ":+: is undefined for argument " ++ show v
 
+-- ParOp behaves similarly to SeqOp, but it combines snippets such that a :=: b
+-- means a and b are played simultaneously.
 evalBinOp ParOp a b = Vpar (check a) (check b)
     where
     check v = case v of
@@ -358,6 +431,7 @@ evalBinOp ParOp a b = Vpar (check a) (check b)
         (Vpar _ _) -> v
         _ -> error $ ":=: is undefined for argument " ++ show v
 
+-- Here's why we defined Eq Val the way we did.
 evalBinOp Eq  a b = Vb (a == b)
 evalBinOp Neq a b = Vb (a /= b)
 evalBinOp Lt  a b = Vb (a <  b)
