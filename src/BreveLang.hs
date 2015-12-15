@@ -362,7 +362,7 @@ parsePatPC = Ppc . read <$> choice (map (try . b_symbol) pitchClasses)
 
 parsePatNum :: Parser Pat
 parsePatNum = do
-    sign <- optionMaybe (oneOf "-+")
+    sign <- optionMaybe (char '-')
     p <- b_number
     return $ case p of
         Left i -> Pn (signed sign i)
