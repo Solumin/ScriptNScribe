@@ -35,12 +35,12 @@ getLocs' locs (TrLoc l) = [l]
 getLocs' locs (TrUn _ t) = getLocs' locs t
 getLocs' locs (TrOp _ t1 t2) = getLocs' locs t1 ++ getLocs' locs t2
 
--- Get all locations [[Loc]]
--- For each update, maybe synth for each location [[Maybe Val)]]
+-- Get all locations [[Loc]] from the user's updates
+-- For each update, maybe synth for each location [[Maybe Val]]
 -- Then get each of the valid substitutions for each update [[Val]]
 -- If any of those are empty (at least one update had no valid synths) then
 -- synthesis failed (return [] or Nothing?) (hard constraint could not be
--- satisfied
+-- satisfied)
 -- Start building complete programs using the rotating heuristic. [TraceMap]
 --    Say we had [[1,2,3],[1,2],[3],[2,4]]
 --    [1,2,3,4], [2,1,3,4], >[3,1,3,4]<, >[1,2,3,2]<
@@ -79,6 +79,11 @@ rotate lls = let
 firstNotIn :: Eq a => [a] -> [a] -> Maybe a
 firstNotIn list filt = find (not . (`elem` filt)) list
 
+-- solveSimple takes a substitution map (locations -> values in the original
+-- program), a value to solve for and a location for that value. It uses inverse
+-- operations to solve for a new value for the given location.
+-- It returns Just Val if a new value is found for that location, and Nothing
+-- otherwise.
 solveSimple :: TraceMap -> Val -> Loc -> Maybe Val
 solveSimple rho val loc = case getTrace val of
     (TrLoc l') -> if loc == l' then Just val else Nothing
