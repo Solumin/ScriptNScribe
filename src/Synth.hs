@@ -13,7 +13,7 @@ import Control.Monad (liftM, liftM2, mplus)
 import qualified Data.Map.Strict as Map
 import Data.Function (on)
 import Data.List (find, sortBy, tails, transpose)
-import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
+import Data.Maybe (catMaybes, fromMaybe, fromJust, mapMaybe)
 import Data.Tuple (swap)
 
 type TraceMap = Map.Map Loc Val
@@ -51,22 +51,39 @@ getLocs' locs (TrOp _ t1 t2) = getLocs' locs t1 ++ getLocs' locs t2
 -- compare Val's, due to how they're set up in BreveEval. Fortunately, comparing
 -- locs makes a lot more sense in this domain.
 
-synthFaithful :: TraceMap -> TraceList -> [TraceMap]
-synthFaithful rho updates = let
-    allLocs = map (getLocs . getTrace) updates
-    allNewVals = map catMaybes $ zipWith (map . solveSimple rho) updates allLocs in
-    if any null allNewVals then [] else
-        map Map.fromList $ rotate (map (mapMaybe makePairs) allNewVals)
+-- Synthesize takes 2 arguments:
+-- 1. rho, the map of locations to values in the original program
+-- 2. the list of user updates
+-- And returns the possible substitutions for each update.
+-- That is, if we have 2 updates, the returned list will contain 2 lists of new
+-- values that may be used. Deciding which one to actually use is based on the
+-- manipulation mode (ad hoc or live) and the synthesis type (faithful or
+-- plausible) which are determined by whatever calls this function.
+synthesize :: TraceMap -> TraceList -> [[Val]]
+synthesize rho updates = let allLocs = map (getLocs . getTrace) updates in
+    map catMaybes $ zipWith (map . solveSimple rho) updates allLocs
 
--- Choose the first element of the sublist that has not been selected previously
--- from another list.
--- If all elements from the sublist have already been used, choose the first
--- one.
--- chooseSemiUnique :: Eq a => [[a]] -> [a]
--- chooseSemiUnique =
---     foldl (\cs ls -> cs ++
---             [if all (`elem` cs) ls then head ls else head $ filter (not . (`elem` cs)) ls])
---         []
+faithful :: ([[Val]] -> [TraceMap]) -> [[Val]] -> Maybe [TraceMap]
+faithful mode updates = if any null updates then Nothing else Just (mode updates)
+
+plausible :: ([[Val]] -> [TraceMap]) -> [[Val]] -> Maybe [TraceMap]
+plausible mode updates = if all null updates then Nothing else Just (mode updates)
+
+-- Live mode uses the rotating heuristic to return exactly one substitution.
+liveMode :: [[Val]] -> [TraceMap]
+liveMode updates = [Map.fromList $ rotate1 (map (mapMaybe makePairs) updates)]
+
+-- Ad hoc mode uses a ranking heuristic to sort each update, then leaves
+-- actually choosing which update to use to the caller. (i.e. the user)
+-- TODO actually rank
+adhocMode :: [[Val]] -> [TraceMap]
+adhocMode updates = map (Map.fromList . mapMaybe makePairs) updates
+
+-- faithful + live mode is generally the most common synthesis paradigm, based
+-- on what I see from sketch-n-sketch
+synthFaithfulLive :: TraceMap -> TraceList -> Maybe TraceMap
+synthFaithfulLive rho userUpdates = let newVals = synthesize rho userUpdates in
+    head <$> faithful liveMode newVals
 
 rotate1 :: Eq a => [[a]] -> [a]
 rotate1 = foldl (\ls as -> ls ++ [fromMaybe (head as) (as `firstNotIn` ls)]) []
@@ -101,6 +118,7 @@ invUnOp Neg (Vd d _) = Vd (-d)
 -- 6 = 8 - 2 (val = t1 `Sub` t2)
 -- 8 - 6 = 2 (t1 `Sub` val = t2) (solve for j)
 -- 6 + 2 = 8 (val `Add` t2 = t1) (solve for i)
+-- More formally, subtraction is anti-commutative. (Division isn't.)
 
 solveForJ :: BinOp -> Val -> Maybe Val -> Trace -> Maybe Val
 solveForJ _ _ Nothing = const Nothing
@@ -166,16 +184,16 @@ getFirstLoc (TrLoc l) = l
 getFirstLoc (TrUn _ t) = getFirstLoc t
 getFirstLoc (TrOp _ t1 t2) = getFirstLoc t2
 
-test :: Maybe Statement
-test =
-    let source = "main = 3.5 + (1.0 + 0.5)"
-        prog = parse source
-        (res,t) = parseEval source
-        update = [Vd 6.5 (getTrace $ head t)]
-        changes = synthFaithful (toTraceMap t) update in
-    case changes of
-    [] -> Nothing
-    (c:cs) -> Just $ updateProgram c prog
+-- test :: Maybe Statement
+-- test =
+--     let source = "main = 3.5 + (1.0 + 0.5)"
+--         prog = parse source
+--         (res,t) = parseEval source
+--         update = [Vd 6.5 (getTrace $ head t)]
+--         changes = synthFaithful (toTraceMap t) update in
+--     case changes of
+--     [] -> Nothing
+--     (c:cs) -> Just $ updateProgram c prog
 
 test2 =
     let source = "dfsa = arpeggio([0,4,7], (D 4 1/2)); main = line(dfsa) :+: (rest 1/4) :+: chord(dfsa);"
@@ -183,7 +201,7 @@ test2 =
         (res, t) = parseEval source
         update = [Vp (read "F") (TrOp Add (TrLoc (1,29)) (TrLoc (1,21)))
                  ,Vn 4 (TrLoc (1,34))]
-        synthed = synthFaithful (toTraceMap t) update in
+        synthed = fromJust $ faithful liveMode (synthesize (toTraceMap t) update) in
     map (`updateProgram` prog) synthed
 
 updateProgram :: TraceMap -> Statement -> Statement
