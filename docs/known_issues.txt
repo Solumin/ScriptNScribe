@@ -6,3 +6,23 @@ at least superficially consistent with Euterpea.
     -> On the other hand, {} in a pattern behaves just like [], AS LONG AS it's
 embedded in a pattern, e.g. (x:{}). Just matching {} isn't possible, since the
 empty snippet is undefined.
+
+Empty Snippet = empty rest makes the most sense, I think. Consider when a user
+creates a new snippet: If synth occurs, what will happen? How will the UI
+present it? Better to have an empty rest (so there's an ACTUALY SOURCE CODE
+LOCATION associated with the new snippet)
+
+But then if you make it a rest, you have to have a val. And if have a val, you
+have to have a trace. So what should the trace be? Do we start adding traces to
+all vals, to all expressions? (It's not a bad idea... feels excessive though.)
+
+But keep in mind that locations across syntheses/programs are not the same! You
+could have a "default" location that's incremented for each snippet added
+between synthesis actions. User adds a snippet "sn1" -> (rest 0 (0,1)), then
+another "sn2 -> (rest 0 (0,2))". These updated snippets are added to the end of
+the program, or wherever.
+
+Then the user adds a note to sn1: (Vnote D 4 1/4 (0,1)). Again, by the user
+update scheme I've been considering, this will add the note after the rest 0.
+Each new note will be added the same way, with no conflicts. This means that,
+unlike regular updates, these need to be in a List instead of a Map.

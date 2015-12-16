@@ -1,0 +1,21 @@
+Possible Texts and Examples:
+
+Parsing:
+- Try each parser over possible domains
+    - PitchClass: Reads a note and returns that note
+    - Number: Reads a *positive* integer or double and returns that number
+    - Rest: Reads "(rest <num>)" correctly
+    - Note: Reads "(pc o d)" correctly
+    - Snippet: "{x}", "{x,y}", etc. (still need to solve empty snippet problem!
+    - List: "[]", "[x]", etc.
+    - all operations
+    - both kinds of function application
+    - etc.
+    - The parsers for simpler/base expressions are obviously easier to test.
+- Parsing Prelude (just passing?)
+
+Evaluation:
+- ???
+
+Tracing:
+- ???

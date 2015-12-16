@@ -22,3 +22,97 @@ Algorithm: (given map locs -> consts p, trace map ni = ti, user's changes ni' = 
 
 Since we have literally only constants, synthesis is literally "change those
 things". That's... a bit too simple.
+
+===== Notes from 12/15
+
+Faithful vs Plausible
+
+Faithful:
+- All hard constraints satisfied
+- That is, every user update results in some binding
+
+Plausible:
+- At least one hard constraint satisfied
+- Not every user update results in a binding
+
+Ad Hoc vs Live
+
+Ad Hoc:
+- Present user with all possible results. User explicitly chooses which ones to
+  go with.
+- Local and structural updates
+
+Live Mode:
+- Rotating heuristic
+- Local updates only
+
+CURRENT Synth:
+- SynthFaithful extracts all locations from each update, and uses solveSimple to
+  calculate the new substitution for that location.
+- This generates a [[Maybe Val]]. Each inner list corresponds to each update,
+  and contains subst for each value in that update.
+- We then catMaybes each one to get [[Val]], where again the inner list
+  corresponds to an update.
+- This is what we should be passing to Faithful and Plausible.
+    - If any of the inner lists are empty, Faithful has failed.
+    - If all of the inner lists are empty, Plausible has failed.
+
+Ranking:
+- sketch uses value calculation -- compare numbers, basically. (Implementation
+  is weird.)
+- Of course that's not the only one that's possible. "How many soft constraints
+  are violated?" is another possibility.
+- How about "how many values are affected by each change"?
+    - We're trying to rank *each possible result* of each given update
+    (Also i really need better terminology)
+    - If we have [[val]] we're sorting each inner list, not the overall list.
+    - Given rho and [val], rank [val] based on how many of the traces in rho are
+      affected by the change.
+    - Precompute: How many times each loc is used in rho.
+    - Then just add up the # of uses.
+    - stable sort prefered
+    - Execute rho is just locs -> vals, not the full list of traces. FUCK.
+- OK, just do basic diff: Compare values, compute how much they differ from the
+  original values. We can calculate from a trace if necessary.
+
+Maybe I've done this backwards. Instead of caller -> faithful -> mode -> synth,
+it should be synthesize (kind) (mode) (rho) (updates) [user traces]
+Do those pass functions, or do we do some kind of "marker" type,
+e.g. data SynthMode = Faithful | Plausible; RunMode = AdHoc | Live ?
+synthesize :: SynthMode RunMode TraceMap TraceList -> Maybe [TraceMap]
+then it does the synthesis and reacts accordingly.
+That way we have everything we need to do stuff like ranking.
+
+=============
+
+Structural Updates:
+- Result of user explicitly creating new notes, rests and snippets
+- Can therefore be performed both ad hoc and live
+- Note these are ONLY result of those two.
+- I'll be happy with just having new snippets and have a description of how new
+  notes may be added.
+
+UI Update:
+- Val (empty location)
+- Snippet (user gives name)
+
+But where to insert?
+- Snippet: Needs to inserted before it is used. (Due to how evaluating works.)
+    - Possibly make Binding = (String, Maybe Val) ? One pass through to gather
+      all known names -> Nothing, a second to actually evaluate?
+    - Would make this much easier: just slap the snippet at the end, all the
+      names it needs will already be defined.
+- But the user has to program any function calls anyway. Adding the snippet
+  directly lets them stitch it into main, that's it.
+    - They'd have to create snippet, sync, write code, add to main. (Or sync
+      before adding to main and do that directly)
+    -> Therefore insert the new snippet statement before main (the last
+statement in the program) (typically) (might be better to use partition)
+- Note/Rest: ("Unit".) Well we know the user will be adding this to a snippet.
+    - Possible give Loc to == adjacent unit?
+    - Synthesis doesn't really have to do anything with these, I don't think;
+      they're just added to the program during the update.
+    - Should be able to naively replace Vn{} with Vseq Vn{} Vn{}! Does that
+      break associativity?
+    Vseq (Vn) (Vseq (Vn) (Vseq (Vn) (Vn))) -->
+    Vseq (Vn) (Vseq (Vn) (Vseq (Vn) (Vseq (Vn) (VN!))))

@@ -1,0 +1,26 @@
+Paper Layout
+
+Appendix A: Breve Language Primer
+- Full syntax
+- Full semantics
+- Future work
+
+Appendix B: UI design document
+- Thoughts on how to implement all desired features.
+- Raphael and vexflow
+- Ace editor
+
+RANDOM SHIT TO THROW IN THE PAPER
+- Snippets in breve currently defined as a note or rest or sequence thereof.
+  With a stronger type system, can have stronger semantic meaning of rests.
+    - E.g. functions that user can interact with can explicitly be of snippet
+      type.
+- Error handling
+
+Simplifications of language:
+- Lists nominally homogeneous, but no checks for that
+- Functions don't make sure param names are unique, or that # args = # params.
+
+"Breve, while not necessarily a strongly-typed language, is at least opinionated
+about types. It doesn't care that your lists are heteregenous -- though it
+should -- but it certainly won't let you will a note with pitches."
