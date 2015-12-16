@@ -41,7 +41,7 @@ emptyEnv = ([],[])
 -- 2. Epxression traces, which record the sequence of operations for calculating
 -- a value. Since we have binary and unary operators, we have 2 expression
 -- trace types.
-data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq, Read, Show)
+data Trace = TrLoc Loc | TrOp BinOp Trace Trace | TrUn UnOp Trace deriving (Eq, Show)
 
 -- Custom Show instance deprecated for parsing of Values for tracing in UI.
 -- instance Show Trace where

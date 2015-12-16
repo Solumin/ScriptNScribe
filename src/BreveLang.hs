@@ -138,28 +138,6 @@ instance Show BinOp where
     show Cons = ":"
     show Cat = "++"
 
--- The Read instance is used exclusively for reading traces during synthesis for
--- the UI. It is, in all likelihood, not a permanent addition.
-instance Read BinOp where
-    readsPrec _ (':':s) = case s of
-        ('+':':':s') -> [(SeqOp, s')]
-        ('=':':':s') -> [(ParOp, s')]
-        _ -> [(Cons, s)]
-    readsPrec _ ('+':s) = case s of
-        ('+':s') -> [(Cat, s')]
-        _ -> [(Add, s)]
-    readsPrec _ ('*':s) = [(Mult, s)]
-    readsPrec _ ('/':s) = [(Div, s)]
-    readsPrec _ ('-':s) = [(Sub, s)]
-    readsPrec _ ('!':'=':s) = [(Neq, s)]
-    readsPrec _ ('=':'=':s) = [(Eq, s)]
-    readsPrec _ ('<':s) = case s of
-        ('=':s') -> [(Lte, s')]
-        _ -> [(Lt, s)]
-    readsPrec _ ('>':s) = case s of
-        ('=':s') -> [(Gte, s')]
-        _ -> [(Gt, s)]
-
 -- Unary operators. Right now just negation for booleans and numbers.
 -- You may have noticed the language specification does not include negative
 -- integers. This is due to the negation operator and how Parsec handles numbers
@@ -168,12 +146,6 @@ data UnOp = Not | Neg deriving (Eq)
 instance Show UnOp where
     show Not = "!"
     show Neg = "-"
-
--- Same as BinOp: Need these for reading Traces, probably don't need to keep
--- once UI is polished.
-instance Read UnOp where
-    readsPrec _ ('!':s) = [(Not, s)]
-    readsPrec _ ('-':s) = [(Neg, s)]
 
 -- Statement represents a full line of a breve program: an assignment, a return
 -- (only valid inside lambdas) and a sequence of statements.
@@ -219,6 +191,7 @@ keywords = ["rest", "true", "false", "if", "then", "else", "def", "return", "cas
 -- Operators. Neat how we can have one canonical representation for each op by
 -- implementing Show, huh?
 mathOps = map show [Add, Sub, Mult, Div]
+unOps = map show [Neg, Not]
 boolOps = map show [Eq, Neq, Lt, Lte, Gt, Gte]
 listOps = map show [Cons, Cat]
 catOps = map show [SeqOp, ParOp] ++ ["=", "\\", "->", "@"]
@@ -238,7 +211,7 @@ breveDef = emptyDef { commentStart = "{-"
                     , opStart = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , opLetter = oneOf ":!#$%&*+./<=>?@\\^|-~"
                     , reservedNames = pitchClasses ++ keywords
-                    , reservedOpNames = catOps ++ mathOps ++ boolOps ++ listOps
+                    , reservedOpNames = catOps ++ mathOps ++ unOps ++ boolOps ++ listOps
                     , caseSensitive = True
                     }
 

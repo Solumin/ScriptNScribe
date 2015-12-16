@@ -1,3 +1,4 @@
+import qualified BreveLang
 import qualified BreveEval
 import qualified Synth
 
@@ -5,8 +6,14 @@ import Control.Monad.IO.Class (liftIO)
 import Data.List ((\\))
 import Data.Maybe (fromJust)
 
+import Text.Parsec hiding (string)
+import Text.Parsec.Char hiding (string)
+import Text.Parsec.Language (haskell)
+import Text.Parsec.String (Parser)
+import Text.Parsec.Token
+
 import qualified Graphics.UI.Threepenny as UI
-import Graphics.UI.Threepenny.Core
+import Graphics.UI.Threepenny.Core hiding ((<|>))
 
 main :: IO ()
 main = startGUI defaultConfig {jsCustomHTML = Just "index.html", jsStatic = Just "static"} setup
@@ -51,7 +58,7 @@ setup window = do
         updates <- get UI.value traceBox
         if null source || null updates then return syncMusic else
             let traces = snd $ BreveEval.parseEval source
-                upTraces = (map readVal $ lines updates)
+                upTraces = (map runParseVal $ lines updates)
                 subst = fromJust $ Synth.synthFaithfulLive traces upTraces in
             element codeBox # set UI.value (show $ Synth.updateProgram subst (BreveEval.parse source))
 
@@ -98,11 +105,11 @@ codebox = do
 controlButton :: String -> UI Element
 controlButton name = UI.button #. "controlbutton" # set UI.text name
 
-readVal :: String -> BreveEval.Val
-readVal s = case words s of
-    ("Pitch":p:t) -> BreveEval.Vp (read p) (read $ unwords t)
-    ("Int":n:t) -> BreveEval.Vn (read n) (read $ unwords t)
-    ("Double":d:t) -> BreveEval.Vd (read d) (read $ unwords t)
+-- readVal :: String -> BreveEval.Val
+-- readVal s = case words s of
+--     ("Pitch":p:t) -> BreveEval.Vp (read p) (read $ unwords t)
+--     ("Int":n:t) -> BreveEval.Vn (read n) (read $ unwords t)
+--     ("Double":d:t) -> BreveEval.Vd (read d) (read $ unwords t)
 
 getSnippets :: BreveEval.EvalRes -> BreveEval.EvalRes
 getSnippets = filter isMusic
@@ -126,3 +133,66 @@ showSnipVal v = case v of
 showsNum :: BreveEval.Val -> (String -> String)
 showsNum (BreveEval.Vn n _) = shows n
 showsNum (BreveEval.Vd d _) = shows d
+
+-- The easiest way to get traces back from the user is to parse them.
+-- This is much, MUCH neater and easier to maintain than trying to do Read
+-- instances for each type (TrLoc, Val, BinOp, UnOp...)
+
+TokenParser
+    { natural = parseN
+    , float = parseD
+    , symbol = parseSymbol
+    , parens = parseParens
+    } = haskell
+
+runParseVal :: String -> BreveEval.Val
+runParseVal s = case parse parseVal "" s of
+    Left _ -> error $ "Failed to parse " ++ s
+    Right v -> v
+
+parseVal :: Parser BreveEval.Val
+parseVal = parsePitch <|> parseInt <|> parseDouble
+
+parsePitch :: Parser BreveEval.Val
+parsePitch = BreveEval.Vp
+    <$> (parseSymbol "Pitch" *> (read <$> parser))
+    <*> parseTrace
+    where parser = choice (map (try . parseSymbol) BreveLang.pitchClasses)
+
+parseInt :: Parser BreveEval.Val
+parseInt = BreveEval.Vn
+    <$> (parseSymbol "Int" *> parseN)
+    <*> parseTrace
+
+parseDouble :: Parser BreveEval.Val
+parseDouble = BreveEval.Vd
+    <$> (parseSymbol "Double" *> parseD)
+    <*> parseTrace
+
+parseTrace :: Parser BreveEval.Trace
+parseTrace = try parseTrLoc <|> try parseTrOp <|> try parseTrUn
+
+parseTrLoc :: Parser BreveEval.Trace
+parseTrLoc = do
+    parseSymbol "TrLoc"
+    loc <- parseParens ((,) <$> (fromInteger <$> parseN <* parseSymbol ",") <*> (fromInteger <$> parseN))
+    return $ BreveEval.TrLoc loc
+
+parseTrOp :: Parser BreveEval.Trace
+parseTrOp = do
+    parseSymbol "TrOp"
+    opS <- choice (map parseSymbol BreveLang.mathOps)
+    let op = case opS of
+            "+" -> BreveLang.Add
+            "*" -> BreveLang.Mult
+            "-" -> BreveLang.Sub
+            "/" -> BreveLang.Div
+    BreveEval.TrOp op <$> parseParens parseTrace <*> parseParens parseTrace
+
+parseTrUn :: Parser BreveEval.Trace
+parseTrUn = do
+    parseSymbol "TrUn"
+    opS <- choice (map parseSymbol BreveLang.unOps)
+    let op = case opS of
+            "-" -> BreveLang.Neg
+    BreveEval.TrUn op <$> parseParens parseTrace
