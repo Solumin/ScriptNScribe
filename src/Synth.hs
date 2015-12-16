@@ -16,6 +16,9 @@ import Data.List (find, sortBy, tails, transpose)
 import Data.Maybe (catMaybes, fromMaybe, fromJust, mapMaybe)
 import Data.Tuple (swap)
 
+data Type = Faithful | Plausible deriving (Eq, Ord, Show)
+data Mode = AdHoc | Live deriving (Eq, Ord, Show)
+
 type TraceMap = Map.Map Loc Val
 
 toTraceMap :: TraceList -> TraceMap
@@ -59,15 +62,20 @@ getLocs' locs (TrOp _ t1 t2) = getLocs' locs t1 ++ getLocs' locs t2
 -- values that may be used. Deciding which one to actually use is based on the
 -- manipulation mode (ad hoc or live) and the synthesis type (faithful or
 -- plausible) which are determined by whatever calls this function.
-synthesize :: TraceMap -> TraceList -> [[Val]]
-synthesize rho updates = let allLocs = map (getLocs . getTrace) updates in
-    map catMaybes $ zipWith (map . solveSimple rho) updates allLocs
 
-faithful :: ([[Val]] -> [TraceMap]) -> [[Val]] -> Maybe [TraceMap]
-faithful mode updates = if any null updates then Nothing else Just (mode updates)
-
-plausible :: ([[Val]] -> [TraceMap]) -> [[Val]] -> Maybe [TraceMap]
-plausible mode updates = if all null updates then Nothing else Just (mode updates)
+synthesize :: Type -> Mode -> TraceList -> TraceList -> Maybe [TraceMap]
+synthesize t m traces updates = let
+    rho = toTraceMap traces
+    allLocs = map (getLocs . getTrace) updates
+    synthRes = map catMaybes $ zipWith (map . solveSimple rho) updates allLocs
+    doType = case t of
+        Faithful -> if any null synthRes then Nothing else Just synthRes
+        Plausible -> if all null synthRes then Nothing else Just synthRes
+    in
+    case (doType, m) of
+    (Nothing, _) -> Nothing
+    (Just s, AdHoc) -> Just $ adhocMode traces s
+    (Just s, Live) -> Just $ liveMode s
 
 -- Live mode uses the rotating heuristic to return exactly one substitution.
 liveMode :: [[Val]] -> [TraceMap]
@@ -75,15 +83,32 @@ liveMode updates = [Map.fromList $ rotate1 (map (mapMaybe makePairs) updates)]
 
 -- Ad hoc mode uses a ranking heuristic to sort each update, then leaves
 -- actually choosing which update to use to the caller. (i.e. the user)
--- TODO actually rank
-adhocMode :: [[Val]] -> [TraceMap]
-adhocMode updates = map (Map.fromList . mapMaybe makePairs) updates
+-- Since we're using a tracemap, it's a bit pointless to rank. It would be a
+-- better idea for the caller to handle the ranking instead.
+adhocMode :: TraceList -> [[Val]] -> [TraceMap]
+adhocMode rho = map (Map.fromList . mapMaybe makePairs . rankUpdates rho)
+
+-- rankUpdates takes a list of all traces in the program and a substitution
+-- generated from synthesis (containing all the possible substitutions that
+-- would satisfy the particular update) and returns a TraceList, built from the
+-- TraceMap, sorted by the "footprint" of each substitution pair. That is, the
+-- elements are sorted by how many other values are affected by that element.
+-- NOTE: The initial trace list should be ALL of the traces in the program, not
+-- just the numeric traces!
+rankUpdates :: TraceList -> TraceList -> TraceList
+rankUpdates allTraces substitution = let
+    locCount :: Map.Map Loc Int
+    allLocs = concatMap (getLocs . getTrace) allTraces
+    locCount = foldl (\m loc -> Map.insertWith (+) loc 1 m) Map.empty allLocs
+    rank (Vp _ (TrLoc l)) = fromJust $ Map.lookup l locCount
+    rank (Vn _ (TrLoc l)) = fromJust $ Map.lookup l locCount
+    rank (Vd _ (TrLoc l)) = fromJust $ Map.lookup l locCount in
+    sortBy (\a b -> if rank a < rank b then LT else GT) substitution
 
 -- faithful + live mode is generally the most common synthesis paradigm, based
 -- on what I see from sketch-n-sketch
-synthFaithfulLive :: TraceMap -> TraceList -> Maybe TraceMap
-synthFaithfulLive rho userUpdates = let newVals = synthesize rho userUpdates in
-    head <$> faithful liveMode newVals
+synthFaithfulLive :: TraceList -> TraceList -> Maybe TraceMap
+synthFaithfulLive rho updates = fmap head $ synthesize Faithful Live rho updates
 
 rotate1 :: Eq a => [[a]] -> [a]
 rotate1 = foldl (\ls as -> ls ++ [fromMaybe (head as) (as `firstNotIn` ls)]) []
@@ -201,8 +226,8 @@ test2 =
         (res, t) = parseEval source
         update = [Vp (read "F") (TrOp Add (TrLoc (1,29)) (TrLoc (1,21)))
                  ,Vn 4 (TrLoc (1,34))]
-        synthed = fromJust $ faithful liveMode (synthesize (toTraceMap t) update) in
-    map (`updateProgram` prog) synthed
+        synthed = fromJust $ synthFaithfulLive t update in
+    updateProgram synthed prog
 
 updateProgram :: TraceMap -> Statement -> Statement
 updateProgram substm (Seq ss) = Seq (map (updateProgram substm) ss)
