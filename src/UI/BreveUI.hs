@@ -3,6 +3,7 @@ import qualified Synth
 
 import Control.Monad.IO.Class (liftIO)
 import Data.List ((\\))
+import Data.Maybe (fromJust)
 
 import qualified Graphics.UI.Threepenny as UI
 import Graphics.UI.Threepenny.Core
@@ -49,9 +50,9 @@ setup window = do
         source <- get UI.value codeBox
         updates <- get UI.value traceBox
         if null source || null updates then return syncMusic else
-            let traces = Synth.toTraceMap $ snd $ BreveEval.parseEval source
+            let traces = snd $ BreveEval.parseEval source
                 upTraces = (map readVal $ lines updates)
-                subst = head $ Synth.synthFaithful traces upTraces in
+                subst = fromJust $ Synth.synthFaithfulLive traces upTraces in
             element codeBox # set UI.value (show $ Synth.updateProgram subst (BreveEval.parse source))
 
     on UI.click play $ const $ do
