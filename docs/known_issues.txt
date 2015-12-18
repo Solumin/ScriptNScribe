@@ -12,9 +12,10 @@ creates a new snippet: If synth occurs, what will happen? How will the UI
 present it? Better to have an empty rest (so there's an ACTUALY SOURCE CODE
 LOCATION associated with the new snippet)
 
-But then if you make it a rest, you have to have a val. And if have a val, you
-have to have a trace. So what should the trace be? Do we start adding traces to
-all vals, to all expressions? (It's not a bad idea... feels excessive though.)
+But then if you make it a rest, you have to have a dur. And if you have a dur,
+you have to have a trace. So what should the trace be? Do we start adding traces
+to all vals, to all expressions? (It's not a bad idea... feels excessive
+though.)
 
 But keep in mind that locations across syntheses/programs are not the same! You
 could have a "default" location that's incremented for each snippet added
@@ -26,3 +27,40 @@ Then the user adds a note to sn1: (Vnote D 4 1/4 (0,1)). Again, by the user
 update scheme I've been considering, this will add the note after the rest 0.
 Each new note will be added the same way, with no conflicts. This means that,
 unlike regular updates, these need to be in a List instead of a Map.
+
+- Throwing errors.
+Errors can occur at many points:
+- Parsing: failing a parse
+    - Not ending a lambda with a return statement (if > 1 statement), for
+      example
+- Evaling:
+    - Type errors:
+        - Comparing (== or <=>) different Vals
+        - Using a non-integer for an octave
+        - Using a non-numeric for a duration
+        - Creating a Note with something other than Vp/Vn/Vd
+        - Creating a Rest with other than Vd
+        - Using a non-boolean conditional
+        - Passing the wrong type to an operation (e.g. non-bool to Not)
+    - Running a program with no main
+    - Performing a program that does not create music
+    - Using a variable that isn't defined
+    - Non-exhaustive cases
+    - Wrong number of arguments to a function (caught by case error)
+    - Wrong type of arguments to a function (probably cause by case error)
+    - Re-using argument names to a function (not caught)
+All of these throw an error. (Parsing errors are thrown by BreveEval.parse, so
+really BreveLang is innocent.) This makes checking for errors kind of
+impossible; an operation will look like it succeeds until you check the value
+and discover an exception. A much cleaner interface would be a BreveError type,
+which would take advantage of Haskell's standard exception handling mechanism.
+(Not only the Either and Maybe monads, but also Control.Monad.Error)
+
+- No math. If you can define it fairly simply using +-*/ etc. you're fine. But
+  want to do anything more complex, like pow or exp or cos? You're a little
+screwed.
+The most obvious solution is to implement these in Haskell -- just like the
+normal operators are. For example, `cos` could be implemented as a unary
+operator, `cos x`. `pi` could be a nullary operator, even.
+Besides having to parse these and add them to the formal language grammar, the
+inverse ops are needed for synthesis.

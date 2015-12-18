@@ -23,4 +23,4 @@ Simplifications of language:
 
 "Breve, while not necessarily a strongly-typed language, is at least opinionated
 about types. It doesn't care that your lists are heteregenous -- though it
-should -- but it certainly won't let you will a note with pitches."
+should -- but it certainly won't let you fill a note with pitches."

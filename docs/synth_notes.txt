@@ -116,3 +116,8 @@ statement in the program) (typically) (might be better to use partition)
       break associativity?
     Vseq (Vn) (Vseq (Vn) (Vseq (Vn) (Vn))) -->
     Vseq (Vn) (Vseq (Vn) (Vseq (Vn) (Vseq (Vn) (VN!))))
+    - But
+    Vseq (Vn) (Vseq (Vn) (Vseq (Vn) (Vn))) -->
+    Vseq (Vn Vseq VN!) (Vseq (Vn) (Vseq (Vn) (Vn)))
+    - Should be
+    Vseq (Vn) (Vseq (VN!) (Vseq (Vn) (Vseq (Vn) (Vn))))
