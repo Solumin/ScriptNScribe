@@ -16,6 +16,9 @@ Assuming you have GHC, GHCi and cabal installed:
 To uninstall this later, delete the sandbox using `cabal sandbox delete`. (Or
 just rm -rf the whole directory.)
 
+The other option is to install the dependencies manually using `cabal install
+<package>`.
+
 ## Running
 
 The easiest way to interact with Script-n-Scribe is through GHCi, the Haskell
@@ -45,6 +48,7 @@ be available on localhost post 8023.
   Music.)
 - `parsec` (Applicative parsing library. See src/BreveLang.hs)
 - `raw-strings-qq` (QuasiQuoter for raw strings -- see src/BrevePrelude.hs)
+- `threepenny-gui` (FRP GUI JS)
 
 ### MIDI
 
