@@ -46,6 +46,11 @@ be available on localhost post 8023.
 - `parsec` (Applicative parsing library. See src/BreveLang.hs)
 - `raw-strings-qq` (QuasiQuoter for raw strings -- see src/BrevePrelude.hs)
 
+### MIDI
+
+[Euterpea][http://haskell.cs.yale.edu/euterpea/download/] has easy instructions
+for setting up MIDI playback from Haskell on Windows, Mac and Linux.
+
 ## Important Files
 
 - `doc/`: Contains documentation, including the project report, the Breve
