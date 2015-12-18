@@ -15,7 +15,7 @@ Parsing:
 - Parsing Prelude (just passing?)
 
 Evaluation:
-- ???
+- Checking prelude functions work
 
 Tracing:
-- ???
+- Expression traces calculated correctly.
