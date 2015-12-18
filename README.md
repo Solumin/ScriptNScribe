@@ -1,4 +1,4 @@
-# Script-n-Scribe: Prodirect Manipulation of Music
+# Script-n-Scribe: Prodirect Manipulation for Music Composition
 
 Author: Teddy Sudol  
 CS 691 NN, Fall 2015
