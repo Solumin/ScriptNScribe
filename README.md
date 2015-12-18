@@ -1,6 +1,6 @@
 # Script-n-Scribe: Prodirect Manipulation of Music
 
-Author: Teddy Sudol
+Author: Teddy Sudol  
 CS 691 NN, Fall 2015
 
 ## Installing
@@ -33,7 +33,7 @@ use. Different files load different parts of the project:
 - BreveEval.hs: evaluate, run and perform files. Includes BreveLang.hs
 - Synth.hs: run synthesis. Includes BreveLang and BreveEval
 - Demo.hs: To see run the demo from my presentation. (Run `:main` from inside
-  GHCi to run the demo) Includes previous files.
+  GHCi to run the demo.) Includes previous files.
 
 The UI is located in `src/UI`. To run it, cd into that directory and run `ghci
 -i".." BreveUI.hs`. Once it has loaded, run `:main` to start the UI, which will
@@ -48,7 +48,7 @@ be available on localhost post 8023.
 
 ### MIDI
 
-[Euterpea][http://haskell.cs.yale.edu/euterpea/download/] has easy instructions
+[Euterpea](http://haskell.cs.yale.edu/euterpea/download/) has easy instructions
 for setting up MIDI playback from Haskell on Windows, Mac and Linux.
 
 ## Important Files
