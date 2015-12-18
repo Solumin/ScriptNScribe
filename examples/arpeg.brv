@@ -1,1 +1,2 @@
-main = {(D 4 qn), (Fs 4 qn), (A 4 qn)}
+dfsa = arpeggio([0,4,7], (D 4 1/4));
+main = line(dfsa) :+: (rest 1/4) :+: chord(dfsa);

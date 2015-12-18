@@ -1,0 +1,4 @@
+-- Because you HAVE to do fibonacci numbers!
+-- in ghci, run with: (show . run) =<< readFile "examples/fibo.brv"
+fibo = (\ n -> if n <= 1 then n else fibo(n-1) + fibo(n-2));
+main = fibo(6)
