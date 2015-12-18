@@ -113,7 +113,7 @@ transpose = (\ note@(p o d) step ->
         then transpose(changeOctave(note, 1), step-12)
         else (p+step o d);
     return if pitchOf(newNote) < pitchOf(note)
-        then changeOctave(newNote, 1)
+        then if step < 0 then changeOctave(newNote, -1) else changeOctave(newNote, 1)
         else newNote;
     );
 
