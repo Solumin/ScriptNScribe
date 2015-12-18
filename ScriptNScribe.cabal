@@ -6,7 +6,7 @@ version:             0.1.0.0
 synopsis:            A prodirect manipulation system for composing music
 -- description:         
 homepage:            https://github.com/Solumin/ScriptNScribe
--- license:             
+license:             MIT
 license-file:        LICENSE
 author:              Teddy Sudol
 maintainer:          tsudol@cs.umass.edu
