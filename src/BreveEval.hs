@@ -6,7 +6,7 @@ module BreveEval
     where
 import BreveLang
 import BrevePrelude
-import qualified Euterpea (play, line)
+import qualified Euterpea (play)
 import qualified Euterpea.Music.Note.Music as E
 import Text.Parsec (runParser)
 
@@ -166,6 +166,15 @@ toMusic (Vseq a b) = toMusic a E.:+: toMusic b
 toMusic (Vpar a b) = toMusic a E.:=: toMusic b
 toMusic v = error $ "Cannot create a music object from " ++ show v
 
+valToDur :: Val -> E.Dur
+valToDur (Vd d _) = toRational d
+valToDur (Vn n _) = toRational n
+valToDur _ = error "Durations must be numeric types"
+
+valToOct :: Val -> E.Octave
+valToOct (Vn n _) = fromInteger n
+valToOct _ = error "Octaves must be integers"
+
 -- Performs the Music represented by the "main" of the program.
 perform :: String -> IO()
 perform = Euterpea.play . toMusic . run
@@ -275,15 +284,6 @@ rest v@(Vd d _) = Vrest v
 rest v@(Vn n _) = Vrest v
 rest _ = error "Rests take a numeric duration"
 
-valToDur :: Val -> E.Dur
-valToDur (Vd d _) = toRational d
-valToDur (Vn n _) = toRational n
-valToDur _ = error "Durations must be numeric types"
-
-valToOct :: Val -> E.Octave
-valToOct (Vn n _) = fromInteger n
-valToOct _ = error "Octaves must be integers"
-
 snippet :: [Val] -> Val
 snippet (v@(Vnote{}):vs) = case vs of
     [] -> v
@@ -293,6 +293,8 @@ snippet (v@(Vrest _):vs) = case vs of
     _ -> Vseq v (snippet vs)
 snippet (_:vs) = error "A snippet should only contain Note or Rest objects"
 
+-- lookupVar looks for the given name in the environment. If the name is not
+-- present, it returns an error.
 lookupVar :: Env -> String -> Val
 lookupVar env name = fromMaybe (error $ shows name " is undefined." ++ show env) (lookup name $ fst env)
 

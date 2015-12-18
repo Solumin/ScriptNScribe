@@ -184,7 +184,7 @@ data Pat =
 -- All the pitches possible in the language. The order of the m list is
 -- significant.
 pitchClasses = [n : m | n <- ['A'..'G'], m <- ["ff", "ss", "f", "s", ""]]
--- Current language keywords. Some of the mare "reserved" for future use
+-- Current language keywords. Some of them are "reserved" for future use
 -- (namely def)
 keywords = ["rest", "true", "false", "if", "then", "else", "def", "return", "case", "of"]
 
@@ -273,9 +273,10 @@ parseReturn = Return <$> (b_reserved "return" *> parseExpr)
 -- parseExpr was a hard-fought battle of not quite understanding what Parsec was
 -- trying to do with parseTerm. However, this makes much more sense now.
 -- It's essentially going to use the chainr combinator, which tries to parse a
--- "chain" of an operator. e.g. 1 + 2 + 3 + 4 is chainr (numberparser)
--- (additionopparser). Given that understanding, we have to define the term
--- parser as either a single term or an (expression in parenthesis)
+-- "chain" of an operator. e.g. 1 + 2 + 3 + 4 is implemented using chainr
+-- (numberparser) (additionopparser). Given that understanding, we have to
+-- define the term parser as either a single term or an (expression in
+-- parenthesis)
 parseExpr :: Parser Expr
 parseExpr = buildExpressionParser opTable term <?> msg
     where
@@ -372,7 +373,7 @@ parseNum = either N D <$> b_number <*> getLoc
 
 -- TODO this is terribly hacky, but it's the easiest way to make sure x (y + z)
 -- is treated as 2 expressions, not as a single function application! (note the
--- "notFollowedBy b_whitespace" parser after ident!
+-- "notFollowedBy b_whitespace" parser after ident!)
 parseApp :: Parser Expr
 parseApp = App <$> (ident <* notFollowedBy b_whitespace) <*> b_parens (b_commaSep parseExpr)
     where ident = (:) <$> (lower <|> char '_') <*> many (alphaNum <|> char '_' <|> char '-')
