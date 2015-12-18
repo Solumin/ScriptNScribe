@@ -1,9 +1,9 @@
 # Script-n-Scribe UI Plan
 
 The current state of the Script-n-Scribe UI is admittedly disappointing. This is
-due to a lack of experience on my part, with both Threepenny-GUI and Web
-development, and a lack of time to learn. I hope that this document clarifies my
-ideas about the UI and serve as a guide for future development.
+due to a lack of experience with both Threepenny-GUI and Web development on my
+part, and a lack of time to learn. I hope that this document clarifies my ideas
+about the UI and serve as a guide for future development.
 
 ## UI Layout
 
@@ -28,7 +28,7 @@ support Vim and emacs key bindings out of the box.)
 As a high-level concept, drawing a score should be a fairly simple task. Using
 an HTML5 canvas, the clefs, note heads, stems and flags can all be loaded as
 separate images and combined to create the notes as necessary. But engraving
-music (as it is called) can be quite complex:
+music can be quite complex:
 
 * There should be a certain number of notes per measure, adding up to the number
   of beats in the measure. This is determined by the time signature, which Breve
@@ -58,9 +58,10 @@ libraries should be feasible.
 
 The code pane is more-or-less constant, as there's no reason for the user to
 input any other kinds of text. However, the right side of the UI can hold
-several informative panes.
+several information panes.
 
-Breve programs produce three kinds of input that may be of interest to the user:
+Breve programs produce three kinds of output that may be of interest to the
+user:
 
 * Traces. These can be helpful for debugging, or just for showing the user
   what's going on behind the scenes.
@@ -81,7 +82,7 @@ for syntax highlighting.
     the synchronization process.
 - Switch Results Pane: Given we make available all three panes in the Additional
   Information section, the user must be able to switch between them!
-- Play: Perform the music!
+- Play: Perform the music.
 - Editor controls: Switching the control scheme and color scheme, for example.
 
 ## Interacting with Breve and Synthesis
