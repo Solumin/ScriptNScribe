@@ -1,3 +1,5 @@
+module UI.BreveUI where
+
 import qualified BreveLang
 import qualified BreveEval
 import qualified Synth

@@ -1,3 +1,5 @@
+module Demo where
+
 import BreveLang
 import BreveEval
 import Synth
