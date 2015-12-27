@@ -11,6 +11,7 @@ import qualified Euterpea.Music.Note.Music as E
 import qualified Text.Parsec as TP (runParser, ParseError)
 
 import Control.Monad (msum)
+import Control.Monad.Except (throwError, catchError)
 import Data.Function (on)
 import Data.List (intercalate, nubBy)
 import qualified Data.Map as Map
@@ -126,7 +127,7 @@ data BreveError =
     | TypeError Val                 -- generic type error
     | CompareError Val Val          -- Type error from comparing two invalid vals
     | UnOpError UnOp Val            -- Invalid argument to a unary operator
-    | BinOpError BinOp Val          -- Invalid argument to a binary operator
+    | BinOpError BinOp Val Val      -- Invalid arguments to a binary operator
     | SnippetError Val              -- The given value is not a valid Snippet component
     | DurationError Val             -- Cannot convert given value into a Duration
     | OctaveError Val               -- Cannot convert given value into an Octave (Int)
@@ -142,7 +143,8 @@ instance Show BreveError where
     show (TypeError s) = "Type error: " ++ show s
     show (CompareError x y) = "Error: Cannot compare " ++ (shows x ("and" ++ show y))
     show (UnOpError o x) = "Error: Unary op " ++ shows o (" is undefined for " ++ show x)
-    show (BinOpError o x) = "Error: Binary op " ++ shows o (" is undefined for " ++ show x)
+    show (BinOpError o x y) = "Error: Binary op " ++ show o ++ " is undefined for " ++
+        show x ++ " and " ++ show y
     show (SnippetError x) = "Error: Expected Note or Rest in the snippet, but received " ++ show x
     show (DurationError x) = "Error: Expected numeric value as a duration, but received " ++ show x
     show (OctaveError x) = "Error: Expected an Integer for an Octave, but received " ++ show x
@@ -153,7 +155,7 @@ instance Show BreveError where
     show (ArgCountError name n m) = "Error: Function " ++ show name ++ " expects " ++ show n ++
         " arguments, but " ++ show m ++ " arguments were given."
 
-newtype BreveErrorM = Either BreveError
+type BreveErrorM = Either BreveError
 
 -- Takes source code and parses it to generate the AST.
 parse :: String -> Statement
@@ -329,8 +331,8 @@ snippet (_:vs) = error "A snippet should only contain Note or Rest objects"
 
 -- lookupVar looks for the given name in the environment. If the name is not
 -- present, it returns an error.
-lookupVar :: Env -> String -> Val
-lookupVar env name = fromMaybe (error $ shows name " is undefined." ++ show env) (lookup name $ fst env)
+lookupVar :: Env -> String -> BreveErrorM Val
+lookupVar env name = fromMaybe (throwError (NameError name)) (lookup name $ fst env)
 
 -- EvalApp is somewhat complex.
 -- 1. Look for the function with the given name (lookupVar)
@@ -350,13 +352,13 @@ evalApp env@(bs,ts) name args =
         in
     (res, traces)
 
-evalIf :: Val -> Expr -> Expr -> Expr
+evalIf :: Val -> Expr -> Expr -> BreveErrorM Expr
 evalIf c t f = case c of
-    (Vb True) -> t
-    (Vb False) -> f
-    _ -> error "Breve is not 'truthy'; conditions must evaluate to bool."
+    (Vb True) -> Right t
+    (Vb False) -> Right f
+    _ -> throwError (ConditionalError c)
 
-evalCase :: Env -> Val -> [(Pat, Expr)] -> (Val, TraceList)
+evalCase :: Env -> Val -> [(Pat, Expr)] -> BreveErrorM (Val, TraceList)
 evalCase env@(bs,ts) cond cases =
     -- hlint iterated the following line a good 3-4 times before coming up with
     -- this. Started with "map matchCase $ zip (map fst cases) (repeat c)"
@@ -365,7 +367,7 @@ evalCase env@(bs,ts) cond cases =
         evals = zipWith (\ m p -> fmap ((,) (snd p)) m) envs cases in
     case msum evals of
         Just (expr, env') -> evalExpr (env' ++ bs, ts) expr
-        Nothing -> error "Non-exhaustive patterns in Breve case statement."
+        Nothing -> throwError (CaseMatchError cond)
 
 -- matchCase defines the semantics of patterns. They're mostly straightforward:
 -- like Pattern with like Value; variables return a binding; wildcards match
@@ -400,14 +402,14 @@ matchCase (p,v) =
     (Pwc, _) -> Just []
     _ -> Nothing
 
-evalUnOp :: UnOp -> Val -> Val
+evalUnOp :: UnOp -> Val -> BreveErrorM Val
 evalUnOp Not v = case v of
     (Vb b) -> Vb (not b)
-    _ -> error "\"Not\" takes boolean"
+    _ -> throwError (UnOpError Not v)
 evalUnOp Neg v = case v of
     (Vn n l) -> Vn (-n) (TrUn Neg l)
     (Vd d l) -> Vd (-d) (TrUn Neg l)
-    _ -> error "Negation is defined for only numbers"
+    _ -> throwError (UnOpError Neg v)
 
 -- evalBinOp is a lot of code but is otherwise quite simple.
 -- All of the math ops are defined for integers and doubles.
@@ -415,68 +417,70 @@ evalUnOp Neg v = case v of
 -- num op pitch makes no sense.
 -- With each operator we build up the related trace, but only for the numeric
 -- operators.
-evalBinOp :: BinOp -> Val -> Val -> Val
+evalBinOp :: BinOp -> Val -> Val -> BreveErrorM Val
 
-evalBinOp Add (Vd d1 l1) (Vd d2 l2) = Vd (d1 + d2) (TrOp Add l1 l2)
-evalBinOp Add (Vd d1 l1) (Vn n2 l2) = Vd (d1 + fromInteger n2) (TrOp Add l1 l2)
-evalBinOp Add (Vn n1 l1) (Vd d2 l2) = Vd (fromInteger n1 + d2) (TrOp Add l1 l2)
-evalBinOp Add (Vn n1 l1) (Vn n2 l2) = Vn (n1 + n2) (TrOp Add l1 l2)
+evalBinOp Add (Vd d1 l1) (Vd d2 l2) = Right $ Vd (d1 + d2) (TrOp Add l1 l2)
+evalBinOp Add (Vd d1 l1) (Vn n2 l2) = Right $ Vd (d1 + fromInteger n2) (TrOp Add l1 l2)
+evalBinOp Add (Vn n1 l1) (Vd d2 l2) = Right $ Vd (fromInteger n1 + d2) (TrOp Add l1 l2)
+evalBinOp Add (Vn n1 l1) (Vn n2 l2) = Right $ Vn (n1 + n2) (TrOp Add l1 l2)
 -- Using the behavior of Euterpea's pitch and trans functions, which always
 -- return a sharp note instead of a flat enharmonic.
-evalBinOp Add (Vp pc l1) (Vn n l2) = Vp (pitches !! ((E.pcToInt pc + d) `mod` 12)) (TrOp Add l1 l2)
+-- Note that `mod` conforms to (x `div` y)*y + (x `mod` y) == x, so negative Vn
+-- will not throw an error and will in fact give the correct result!
+evalBinOp Add (Vp pc l1) (Vn n l2) = Right $ Vp (pitches !! ((E.pcToInt pc + d) `mod` 12)) (TrOp Add l1 l2)
     where
         pitches = [E.C, E.Cs, E.D, E.Ds, E.E, E.F, E.Fs, E.G, E.Gs, E.A, E.As, E.B]
-        d = fromInteger n
+        d = $ fromInteger n
 
-evalBinOp Sub (Vd d1 l1) (Vd d2 l2) = Vd (d1 - d2) (TrOp Sub l1 l2)
-evalBinOp Sub (Vd d1 l1) (Vn n2 l2) = Vd (d1 - fromInteger n2) (TrOp Sub l1 l2)
-evalBinOp Sub (Vn n1 l1) (Vd d2 l2) = Vd (fromInteger n1 - d2) (TrOp Sub l1 l2)
-evalBinOp Sub (Vn n1 l1) (Vn n2 l2) = Vn (n1 - n2) (TrOp Sub l1 l2)
+evalBinOp Sub (Vd d1 l1) (Vd d2 l2) = Right $ Vd (d1 - d2) (TrOp Sub l1 l2)
+evalBinOp Sub (Vd d1 l1) (Vn n2 l2) = Right $ Vd (d1 - fromInteger n2) (TrOp Sub l1 l2)
+evalBinOp Sub (Vn n1 l1) (Vd d2 l2) = Right $ Vd (fromInteger n1 - d2) (TrOp Sub l1 l2)
+evalBinOp Sub (Vn n1 l1) (Vn n2 l2) = Right $ Vn (n1 - n2) (TrOp Sub l1 l2)
 evalBinOp Sub vp@(Vp pc l1) vn@(Vn n l2) = evalBinOp Add vp (evalUnOp Neg vn)
 
-evalBinOp Mult (Vd d1 l1) (Vd d2 l2) = Vd (d1 * d2) (TrOp Mult l1 l2)
-evalBinOp Mult (Vd d1 l1) (Vn n2 l2) = Vd (d1 * fromInteger n2) (TrOp Mult l1 l2)
-evalBinOp Mult (Vn n1 l1) (Vd d2 l2) = Vd (fromInteger n1 * d2) (TrOp Mult l1 l2)
-evalBinOp Mult (Vn n1 l1) (Vn n2 l2) = Vn (n1 * n2) (TrOp Mult l1 l2)
+evalBinOp Mult (Vd d1 l1) (Vd d2 l2) = Right $ Vd (d1 * d2) (TrOp Mult l1 l2)
+evalBinOp Mult (Vd d1 l1) (Vn n2 l2) = Right $ Vd (d1 * fromInteger n2) (TrOp Mult l1 l2)
+evalBinOp Mult (Vn n1 l1) (Vd d2 l2) = Right $ Vd (fromInteger n1 * d2) (TrOp Mult l1 l2)
+evalBinOp Mult (Vn n1 l1) (Vn n2 l2) = Right $ Vn (n1 * n2) (TrOp Mult l1 l2)
 
 -- Note that Div always returns a double!!
-evalBinOp Div (Vd d1 l1) (Vd d2 l2) = Vd (d1 / d2) (TrOp Div l1 l2)
-evalBinOp Div (Vd d1 l1) (Vn n2 l2) = Vd (d1 / fromInteger n2) (TrOp Div l1 l2)
-evalBinOp Div (Vn n1 l1) (Vd d2 l2) = Vd (fromInteger n1 / d2) (TrOp Div l1 l2)
-evalBinOp Div (Vn n1 l1) (Vn n2 l2) = Vd (fromInteger n1 / fromInteger n2) (TrOp Div l1 l2)
+evalBinOp Div (Vd d1 l1) (Vd d2 l2) = Right $ Vd (d1 / d2) (TrOp Div l1 l2)
+evalBinOp Div (Vd d1 l1) (Vn n2 l2) = Right $ Vd (d1 / fromInteger n2) (TrOp Div l1 l2)
+evalBinOp Div (Vn n1 l1) (Vd d2 l2) = Right $ Vd (fromInteger n1 / d2) (TrOp Div l1 l2)
+evalBinOp Div (Vn n1 l1) (Vn n2 l2) = Right $ Vd (fromInteger n1 / fromInteger n2) (TrOp Div l1 l2)
 
 -- SeqOp nominally combines snippets ('linearly', that is, a :+: b means b is
--- played after a) but we use it to add note and things to snippets.
-evalBinOp SeqOp a b = Vseq (check a) (check b)
+-- played after a) but we use it to add notes and things to snippets.
+evalBinOp SeqOp a b = (Vpar <$> check a <*> check b) `catchError` Left
     where
     check v = case v of
-        (Vnote{}) -> v
-        (Vrest _) -> v
-        (Vseq _ _) -> v
-        (Vpar _ _) -> v
-        _ -> error $ ":+: is undefined for argument " ++ show v
+        (Vnote{}) -> Right v
+        (Vrest _) -> Right v
+        (Vseq _ _) -> Right v
+        (Vpar _ _) -> Right v
+        _ -> throwError (BinOpError SeqOp a b)
 
 -- ParOp behaves similarly to SeqOp, but it combines snippets such that a :=: b
 -- means a and b are played simultaneously.
-evalBinOp ParOp a b = Vpar (check a) (check b)
+evalBinOp ParOp a b = (Vpar <$> check a <*> check b) `catchError` Left
     where
     check v = case v of
-        (Vnote{}) -> v
-        (Vrest _) -> v
-        (Vseq _ _) -> v
-        (Vpar _ _) -> v
-        _ -> error $ ":=: is undefined for argument " ++ show v
+        (Vnote{}) -> Right v
+        (Vrest _) -> Right v
+        (Vseq _ _) -> Right v
+        (Vpar _ _) -> Right v
+        _ -> throwError (BinOpError ParOp a b)
 
 -- Here's why we defined Eq Val the way we did.
-evalBinOp Eq  a b = Vb (a == b)
-evalBinOp Neq a b = Vb (a /= b)
-evalBinOp Lt  a b = Vb (a <  b)
-evalBinOp Lte a b = Vb (a <= b)
-evalBinOp Gt  a b = Vb (a >  b)
-evalBinOp Gte a b = Vb (a >= b)
+evalBinOp Eq  a b = Right $ Vb (a == b)
+evalBinOp Neq a b = Right $ Vb (a /= b)
+evalBinOp Lt  a b = Right $ Vb (a <  b)
+evalBinOp Lte a b = Right $ Vb (a <= b)
+evalBinOp Gt  a b = Right $ Vb (a >  b)
+evalBinOp Gte a b = Right $ Vb (a >= b)
 
-evalBinOp Cons a (Vlist l) = Vlist (a : l)
+evalBinOp Cons a (Vlist l) = Right $ Vlist (a : l)
 
-evalBinOp Cat (Vlist a) (Vlist b) = Vlist (a ++ b)
+evalBinOp Cat (Vlist a) (Vlist b) = Right $ Vlist (a ++ b)
 
-evalBinOp o a b = error $ unwords ["Op", show o, "is undefined for args", show a, show b]
+evalBinOp o a b = throwError (BinOpError o a b)
