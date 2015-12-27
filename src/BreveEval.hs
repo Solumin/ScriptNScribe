@@ -8,7 +8,7 @@ import BreveLang
 import BrevePrelude
 import qualified Euterpea (play)
 import qualified Euterpea.Music.Note.Music as E
-import Text.Parsec (runParser)
+import qualified Text.Parsec as TP (runParser, ParseError)
 
 import Control.Monad (msum)
 import Data.Function (on)
@@ -114,16 +114,50 @@ instance Ord Val where
     (Vlist a) <= (Vlist b) = a <= b
     a <= b = error $ unwords ["Cannot compare", show a, "and", show b]
 
--- Returns the trace of a given literal
+-- Returns the trace of a given value
 getTrace :: Val -> Trace
 getTrace val = case val of
     (Vp _ t) -> t
     (Vn _ t) -> t
     (Vd _ t) -> t
 
+data BreveError =
+      ParseError TP.ParseError  -- Parsec fails
+    | TypeError Val                 -- generic type error
+    | CompareError Val Val          -- Type error from comparing two invalid vals
+    | UnOpError UnOp Val            -- Invalid argument to a unary operator
+    | BinOpError BinOp Val          -- Invalid argument to a binary operator
+    | SnippetError Val              -- The given value is not a valid Snippet component
+    | DurationError Val             -- Cannot convert given value into a Duration
+    | OctaveError Val               -- Cannot convert given value into an Octave (Int)
+    | NoMusicError                  -- Cannot produce music from the program
+    | NameError String              -- Failed lookup (var, func application, running main)
+    | CaseMatchError Val            -- No cases could be matched
+    | ConditionalError Val          -- Conditional for an If statement did not eval to Bool
+    | ArgCountError String Int Int  -- Function expected N arguments, but found M
+    deriving Eq
+
+instance Show BreveError where
+    show (ParseError p) = show p
+    show (TypeError s) = "Type error: " ++ show s
+    show (CompareError x y) = "Error: Cannot compare " ++ (shows x ("and" ++ show y))
+    show (UnOpError o x) = "Error: Unary op " ++ shows o (" is undefined for " ++ show x)
+    show (BinOpError o x) = "Error: Binary op " ++ shows o (" is undefined for " ++ show x)
+    show (SnippetError x) = "Error: Expected Note or Rest in the snippet, but received " ++ show x
+    show (DurationError x) = "Error: Expected numeric value as a duration, but received " ++ show x
+    show (OctaveError x) = "Error: Expected an Integer for an Octave, but received " ++ show x
+    show NoMusicError = "Error: The given program does not produce music"
+    show (NameError s) = "Error: The name " ++ show s ++ " is undefined"
+    show (CaseMatchError x) = "Error: No cases match " ++ show x
+    show (ConditionalError x) = "Error: If-statement conditionals must evaluate to Bool, not " ++ show x
+    show (ArgCountError name n m) = "Error: Function " ++ show name ++ " expects " ++ show n ++
+        " arguments, but " ++ show m ++ " arguments were given."
+
+newtype BreveErrorM = Either BreveError
+
 -- Takes source code and parses it to generate the AST.
 parse :: String -> Statement
-parse input = case runParser breveParser () "input" input of
+parse input = case TP.runParser breveParser () "input" input of
     Left err -> error (show err)
     Right st -> st
 
