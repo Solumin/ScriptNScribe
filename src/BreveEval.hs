@@ -124,7 +124,7 @@ getTrace val = case val of
 
 data BreveError =
       ParseError TP.ParseError  -- Parsec fails
-    | TypeError Val                 -- generic type error
+    | TypeError String                 -- generic type error
     | CompareError Val Val          -- Type error from comparing two invalid vals
     | UnOpError UnOp Val            -- Invalid argument to a unary operator
     | BinOpError BinOp Val Val      -- Invalid arguments to a binary operator
@@ -140,7 +140,7 @@ data BreveError =
 
 instance Show BreveError where
     show (ParseError p) = show p
-    show (TypeError s) = "Type error: " ++ show s
+    show (TypeError s) = "Type error: " ++ s
     show (CompareError x y) = "Error: Cannot compare " ++ (shows x ("and" ++ show y))
     show (UnOpError o x) = "Error: Unary op " ++ shows o (" is undefined for " ++ show x)
     show (BinOpError o x y) = "Error: Binary op " ++ show o ++ " is undefined for " ++
@@ -253,7 +253,7 @@ logIt val = case val of
 -- Remember we have to have a trace for every base value (numeric value or
 -- pitchclass) in the program, so we have to have a way to pass those traces
 -- around! e.g. a = 1; b = 2; c = 1 + 2 is 3 traces!
-evalExpr :: Env -> Expr -> (Val, TraceList)
+evalExpr :: Env -> Expr -> BreveErrorM (Val, TraceList)
 evalExpr env expr =
     let evalE = evalExpr env
         both v = (v, [v])           -- v is returned and added to trace
@@ -308,31 +308,31 @@ evalExpr env expr =
 -- Note that we don't use any type checking for Lists, even though those are
 -- nominally homogeneous.
 
-note :: Val -> Val -> Val -> Val
+note :: Val -> Val -> Val -> BreveErrorM Val
 note p@(Vp{}) o@(Vn{}) d = case d of
-    (Vd{}) -> Vnote p o d
-    (Vn{}) -> Vnote p o d
-    _ -> error $ "Expected a numeric duration, received " ++ show d
-note _ _ _ = error "Note takes a pitch class, an integer octave and a numeric duration"
+    (Vd{}) -> Right $ Vnote p o d
+    (Vn{}) -> Right $ Vnote p o d
+    _ -> throwError (DurationError d)
+note _ _ _ = throwError (TypeError "Note takes a pitch class, an integer octave and a numeric duration")
 
-rest :: Val -> Val
-rest v@(Vd d _) = Vrest v
-rest v@(Vn n _) = Vrest v
-rest _ = error "Rests take a numeric duration"
+rest :: Val -> BreveErrorM Val
+rest v@(Vd d _) = Right $ Vrest v
+rest v@(Vn n _) = Right $ Vrest v
+rest d = throwError (DurationError d)
 
-snippet :: [Val] -> Val
+snippet :: [Val] -> BreveErrorM Val
 snippet (v@(Vnote{}):vs) = case vs of
-    [] -> v
-    _ -> Vseq v (snippet vs)
+    [] -> Right v
+    _ -> Vseq v <$> (snippet vs)
 snippet (v@(Vrest _):vs) = case vs of
-    [] -> v
-    _ -> Vseq v (snippet vs)
-snippet (_:vs) = error "A snippet should only contain Note or Rest objects"
+    [] -> Right v
+    _ -> Vseq v <$> (snippet vs)
+snippet (v:_) = throwError (SnippetError v)
 
 -- lookupVar looks for the given name in the environment. If the name is not
 -- present, it returns an error.
 lookupVar :: Env -> String -> BreveErrorM Val
-lookupVar env name = fromMaybe (throwError (NameError name)) (lookup name $ fst env)
+lookupVar env name = maybe (throwError (NameError name)) Right (lookup name $ fst env)
 
 -- EvalApp is somewhat complex.
 -- 1. Look for the function with the given name (lookupVar)
@@ -404,11 +404,11 @@ matchCase (p,v) =
 
 evalUnOp :: UnOp -> Val -> BreveErrorM Val
 evalUnOp Not v = case v of
-    (Vb b) -> Vb (not b)
+    (Vb b) -> Right $ Vb (not b)
     _ -> throwError (UnOpError Not v)
 evalUnOp Neg v = case v of
-    (Vn n l) -> Vn (-n) (TrUn Neg l)
-    (Vd d l) -> Vd (-d) (TrUn Neg l)
+    (Vn n l) -> Right $ Vn (-n) (TrUn Neg l)
+    (Vd d l) -> Right $ Vd (-d) (TrUn Neg l)
     _ -> throwError (UnOpError Neg v)
 
 -- evalBinOp is a lot of code but is otherwise quite simple.
@@ -430,13 +430,13 @@ evalBinOp Add (Vn n1 l1) (Vn n2 l2) = Right $ Vn (n1 + n2) (TrOp Add l1 l2)
 evalBinOp Add (Vp pc l1) (Vn n l2) = Right $ Vp (pitches !! ((E.pcToInt pc + d) `mod` 12)) (TrOp Add l1 l2)
     where
         pitches = [E.C, E.Cs, E.D, E.Ds, E.E, E.F, E.Fs, E.G, E.Gs, E.A, E.As, E.B]
-        d = $ fromInteger n
+        d = fromInteger n
 
 evalBinOp Sub (Vd d1 l1) (Vd d2 l2) = Right $ Vd (d1 - d2) (TrOp Sub l1 l2)
 evalBinOp Sub (Vd d1 l1) (Vn n2 l2) = Right $ Vd (d1 - fromInteger n2) (TrOp Sub l1 l2)
 evalBinOp Sub (Vn n1 l1) (Vd d2 l2) = Right $ Vd (fromInteger n1 - d2) (TrOp Sub l1 l2)
 evalBinOp Sub (Vn n1 l1) (Vn n2 l2) = Right $ Vn (n1 - n2) (TrOp Sub l1 l2)
-evalBinOp Sub vp@(Vp pc l1) vn@(Vn n l2) = evalBinOp Add vp (evalUnOp Neg vn)
+evalBinOp Sub vp@(Vp pc l1) vn@(Vn n l2) = evalBinOp Add vp =<< evalUnOp Neg vn
 
 evalBinOp Mult (Vd d1 l1) (Vd d2 l2) = Right $ Vd (d1 * d2) (TrOp Mult l1 l2)
 evalBinOp Mult (Vd d1 l1) (Vn n2 l2) = Right $ Vd (d1 * fromInteger n2) (TrOp Mult l1 l2)
