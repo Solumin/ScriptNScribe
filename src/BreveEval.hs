@@ -10,7 +10,7 @@ import qualified Euterpea (play)
 import qualified Euterpea.Music.Note.Music as E
 import qualified Text.Parsec as TP (runParser, ParseError)
 
-import Control.Monad (msum)
+import Control.Monad (msum, foldM)
 import Control.Monad.Except (throwError, catchError)
 import Data.Function (on)
 import Data.List (intercalate, nubBy)
@@ -233,10 +233,16 @@ perform = Euterpea.play . toMusic . run
 -- Sequence statements are evaluated top-to-bottom, building the environment as
 -- each component statement is evaluated. There is no initial interpretation or
 -- first-pass. The order of definitions matters!
-eval :: Env -> Statement -> Env
-eval env (Seq ss) = foldl eval env ss
-eval env@(bs, ts) (Assign n e) = let (val, traces) = evalExpr env e in ((n,val):bs, traces ++ ts)
-eval env@(bs, ts) (Return e) = let (val, traces) = evalExpr env e in (("return",val):bs, traces ++ ts)
+eval :: Env -> Statement -> BreveErrorM Env
+eval env (Seq ss) = foldM eval env ss
+eval env@(bs, ts) (Assign n e) = do
+    (val, traces) <- evalExpr env e
+    return ((n,val):bs, traces ++ ts)
+-- let (val, traces) = evalExpr env e in ((n,val):bs, traces ++ ts)
+eval env@(bs, ts) (Return e) = do
+    (val, traces) <- evalExpr env e
+    return (("return",val):bs, traces ++ ts)
+-- let (val, traces) = evalExpr env e in (("return",val):bs, traces ++ ts)
 
 -- logIt is a predicate for determining if a Val should be added to the traces.
 -- Only those Vals that have Trace in their definition are logged. This is
@@ -355,7 +361,7 @@ evalApp env@(bs,ts) name args = do
     (Vfunc (Lambda params body)) <- lookupVar env name
     argenv <- concat <$>
         traverse (maybe (throwError (ArgMatchError name)) Right) (map matchCase (zip params args))
-    let (evalRes, traces) = eval (argenv ++ bs, ts) body
+    (evalRes, traces) <- eval (argenv ++ bs, ts) body
     res <- lookupVar (evalRes, traces) "return"
     return $ if (length args) /= (length params)
         then throwError (ArgCountError name (length params) (length args))
