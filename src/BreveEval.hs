@@ -17,6 +17,10 @@ import Data.List (intercalate, nubBy)
 import qualified Data.Map as Map
 import Data.Maybe (fromMaybe)
 
+-- TODO replace EvalRes with [Binding] (clearer)
+-- TODO replace BreveError.CaseMatchError with PatMatchError
+-- TODO equality ops must return ConditionalError
+
 -- BreveEval.hs deals entirely with the evaluation of Breve programs. This
 -- includes running the parser and building traces for later synthesis.
 
@@ -342,17 +346,29 @@ lookupVar env name = maybe (throwError (NameError name)) Right (lookup name $ fs
 -- 3. Eval the function body (a Seq) with the arguments added to the environment
 -- 4. Return the result of the "return" statement, along with any traces from
 -- the func body.
-evalApp :: Env -> String -> [Val] -> (Val, TraceList)
-evalApp env@(bs,ts) name args =
-    let (Vfunc (Lambda params body)) = lookupVar env name
-        nonexhaust = "Non-exhaustive patterns in function " ++ name
-        argenv = concat $ fromMaybe (error nonexhaust) (traverse matchCase (zip params args))
-        (evalRes, traces) = eval (argenv ++ bs, ts) body
-        res = fromMaybe
-                (error $ "Function " ++ name ++ " has no return statement!")
-                (lookup "return" evalRes)
-        in
-    (res, traces)
+-- Errors:
+-- - NameError: Named function is undefined
+-- - CaseMatchError: An argument doesn't match its pattern
+-- - ArgCountError: Wrong number of arguments
+evalApp :: Env -> String -> [Val] -> BreveErrorM (Val, TraceList)
+evalApp env@(bs,ts) name args = do
+    (Vfunc (Lambda params body)) <- lookupVar env name
+    argenv <- concat <$>
+        traverse (maybe (throwError (ArgMatchError name)) Right) (map matchCase (zip params args))
+    let (evalRes, traces) = eval (argenv ++ bs, ts) body
+    res <- lookupVar (evalRes, traces) "return"
+    return $ if (length args) /= (length params)
+        then throwError (ArgCountError name (length params) (length args))
+        else (res, traces)
+    -- let (Vfunc (Lambda params body)) = lookupVar env name
+    --     nonexhaust = "Non-exhaustive patterns in function " ++ name
+    --     argenv = concat $ fromMaybe (error nonexhaust) (traverse matchCase (zip params args))
+    --     (evalRes, traces) = eval (argenv ++ bs, ts) body
+    --     res = fromMaybe
+    --             (error $ "Function " ++ name ++ " has no return statement!")
+    --             (lookup "return" evalRes)
+    --     in
+    -- (res, traces)
 
 evalIf :: Val -> Expr -> Expr -> BreveErrorM Expr
 evalIf c t f = case c of
