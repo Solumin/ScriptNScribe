@@ -164,40 +164,49 @@ instance Show BreveError where
 type BreveErrorM = Either BreveError
 
 -- Takes source code and parses it to generate the AST.
-parse :: String -> Statement
-parse input = case TP.runParser breveParser () "input" input of
-    Left err -> error (show err)
-    Right st -> st
+parse :: String -> BreveErrorM Statement
+parse input = either (throwError . ParseError) Right (TP.runParser breveParser () "input" input)
+-- case TP.runParser breveParser () "input" input of
+--     Left err -> error (show err)
+--     Right st -> st
 
 -- Produce the Environment defined by a program. eval has more details on the
 -- actual evaluation. Note that this produces the whole environment, not the
 -- Value.
-parseEval :: String -> Env
+parseEval :: String -> BreveErrorM Env
 parseEval = parseEvalEnv initEnv
 
 -- parseEvalEnv allows for an arbitrary initial environment to be used during
 -- evaluation. This could be used to chain together program executions, for
 -- example, to allow multi-file execution.
-parseEvalEnv :: Env -> String -> Env
-parseEvalEnv env source =
-    let prog = parse source
-        (evalRes, exprTraces) = eval env prog in
-    (evalRes, nubBy ((==) `on` getTrace) exprTraces)
+parseEvalEnv :: Env -> String -> BreveErrorM Env
+parseEvalEnv env source = do
+        prog <- parse source
+        (evalRes, exprTraces) <- eval env prog
+        return (evalRes, nubBy ((==) `on` getTrace) exprTraces)
+    -- let prog = parse source
+    --     (evalRes, exprTraces) = eval env prog in
+    -- (evalRes, nubBy ((==) `on` getTrace) exprTraces)
 
 -- Prelude contains many useful functions, like map and fold, written purely in
 -- Breve. initEnv loads the prelude so it can be used in parseEval.
-initEnv = parseEvalEnv emptyEnv prelude
+initEnv :: Env
+initEnv = case parseEvalEnv emptyEnv prelude of
+    Left err -> error ("Could not load Prelude: " ++ show err)
+    Right e -> e
 
 -- Takes source code and evaluates the "main" expression. The Prelude is loaded
 -- before execution.
-run :: String -> Val
+run :: String -> BreveErrorM Val
 run = runEnv initEnv
 
 -- Same as run, but with a given initial environment. (i.e. no Prelude if
 -- emptyEnv is used, or you could chain together executions.)
-runEnv :: Env -> String -> Val
-runEnv env source =
-    fromMaybe (error "No main to evaluate!") (lookup "main" (fst $ parseEvalEnv env source))
+runEnv :: Env -> String -> BreveErrorM Val
+runEnv env source = case parseEvalEnv env source of
+        Left err -> Left err
+        Right (evalres,_) -> maybe (throwError (NameError "main")) Right (lookup "main" evalres)
+    -- fromMaybe (error "No main to evaluate!") (lookup "main" (fst $ parseEvalEnv env source))
 
 -- Transforms a Val into a Music object that can be played. This is only defined
 -- for Vnote, Vrest, Vseq and Vpar.
