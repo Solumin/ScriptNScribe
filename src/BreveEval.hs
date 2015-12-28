@@ -123,8 +123,8 @@ getTrace val = case val of
     (Vd _ t) -> t
 
 data BreveError =
-      ParseError TP.ParseError  -- Parsec fails
-    | TypeError String                 -- generic type error
+      ParseError TP.ParseError      -- Parsec fails
+    | TypeError String              -- generic type error
     | CompareError Val Val          -- Type error from comparing two invalid vals
     | UnOpError UnOp Val            -- Invalid argument to a unary operator
     | BinOpError BinOp Val Val      -- Invalid arguments to a binary operator
@@ -135,6 +135,7 @@ data BreveError =
     | NameError String              -- Failed lookup (var, func application, running main)
     | CaseMatchError Val            -- No cases could be matched
     | ConditionalError Val          -- Conditional for an If statement did not eval to Bool
+    | ArgMatchError String          -- Couldn't match an arg to a param pattern
     | ArgCountError String Int Int  -- Function expected N arguments, but found M
     deriving Eq
 
@@ -152,6 +153,7 @@ instance Show BreveError where
     show (NameError s) = "Error: The name " ++ show s ++ " is undefined"
     show (CaseMatchError x) = "Error: No cases match " ++ show x
     show (ConditionalError x) = "Error: If-statement conditionals must evaluate to Bool, not " ++ show x
+    show (ArgMatchError name) = "Error: " ++ shows name (": Failed to match argument to parameter")
     show (ArgCountError name n m) = "Error: Function " ++ show name ++ " expects " ++ show n ++
         " arguments, but " ++ show m ++ " arguments were given."
 
