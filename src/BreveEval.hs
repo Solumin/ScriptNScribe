@@ -135,7 +135,7 @@ data BreveError =
     | SnippetError Val              -- The given value is not a valid Snippet component
     | DurationError Val             -- Cannot convert given value into a Duration
     | OctaveError Val               -- Cannot convert given value into an Octave (Int)
-    | NoMusicError                  -- Cannot produce music from the program
+    | NoMusicError Val              -- Cannot produce music from the program
     | NameError String              -- Failed lookup (var, func application, running main)
     | CaseMatchError Val            -- No cases could be matched
     | ConditionalError Val          -- Conditional for an If statement did not eval to Bool
@@ -153,7 +153,7 @@ instance Show BreveError where
     show (SnippetError x) = "Error: Expected Note or Rest in the snippet, but received " ++ show x
     show (DurationError x) = "Error: Expected numeric value as a duration, but received " ++ show x
     show (OctaveError x) = "Error: Expected an Integer for an Octave, but received " ++ show x
-    show NoMusicError = "Error: The given program does not produce music"
+    show (NoMusicError x) = "Error: Cannot produce music from " ++ show x
     show (NameError s) = "Error: The name " ++ show s ++ " is undefined"
     show (CaseMatchError x) = "Error: No cases match " ++ show x
     show (ConditionalError x) = "Error: If-statement conditionals must evaluate to Bool, not " ++ show x
@@ -210,25 +210,28 @@ runEnv env source = case parseEvalEnv env source of
 
 -- Transforms a Val into a Music object that can be played. This is only defined
 -- for Vnote, Vrest, Vseq and Vpar.
-toMusic :: Val -> Music
-toMusic (Vnote (Vp p _) o d) = E.note (valToDur d) (p, valToOct o)
-toMusic (Vrest d) = E.rest (valToDur d)
-toMusic (Vseq a b) = toMusic a E.:+: toMusic b
-toMusic (Vpar a b) = toMusic a E.:=: toMusic b
-toMusic v = error $ "Cannot create a music object from " ++ show v
+toMusic :: Val -> BreveErrorM Music
+toMusic (Vnote (Vp p _) o d) = E.note <$> valToDur d <*> ((,) p <$> valToOct o)
+toMusic (Vrest d) = E.rest <$> valToDur d
+toMusic (Vseq a b) = (E.:+:) <$> toMusic a <*> toMusic b
+toMusic (Vpar a b) = (E.:=:) <$> toMusic a <*> toMusic b
+toMusic v = throwError (NoMusicError v)
 
-valToDur :: Val -> E.Dur
-valToDur (Vd d _) = toRational d
-valToDur (Vn n _) = toRational n
-valToDur _ = error "Durations must be numeric types"
+valToDur :: Val -> BreveErrorM E.Dur
+valToDur (Vd d _) = Right $ toRational d
+valToDur (Vn n _) = Right $ toRational n
+valToDur v = throwError (DurationError v)
 
-valToOct :: Val -> E.Octave
-valToOct (Vn n _) = fromInteger n
-valToOct _ = error "Octaves must be integers"
+valToOct :: Val -> BreveErrorM E.Octave
+valToOct (Vn n _) = Right $ fromInteger n
+valToOct v = throwError (OctaveError v)
 
 -- Performs the Music represented by the "main" of the program.
-perform :: String -> IO()
-perform = Euterpea.play . toMusic . run
+perform :: String -> BreveErrorM (IO ())
+perform input = do
+    res <- run input
+    music <- toMusic res
+    return (Euterpea.play music)
 
 -- ==========
 -- Evaluating
@@ -372,9 +375,9 @@ evalApp env@(bs,ts) name args = do
         traverse (maybe (throwError (ArgMatchError name)) Right) (map matchCase (zip params args))
     (evalRes, traces) <- eval (argenv ++ bs, ts) body
     res <- lookupVar (evalRes, traces) "return"
-    return $ if (length args) /= (length params)
+    if (length args) /= (length params)
         then throwError (ArgCountError name (length params) (length args))
-        else (res, traces)
+        else return (res, traces)
     -- let (Vfunc (Lambda params body)) = lookupVar env name
     --     nonexhaust = "Non-exhaustive patterns in function " ++ name
     --     argenv = concat $ fromMaybe (error nonexhaust) (traverse matchCase (zip params args))
