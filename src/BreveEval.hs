@@ -278,54 +278,85 @@ logIt val = case val of
 -- pitchclass) in the program, so we have to have a way to pass those traces
 -- around! e.g. a = 1; b = 2; c = 1 + 2 is 3 traces!
 evalExpr :: Env -> Expr -> BreveErrorM (Val, TraceList)
+-- evalExpr _ _ = throwError (TypeError "TYPES LIED EVAL DIED")
 evalExpr env expr =
     let evalE = evalExpr env
         both v = (v, [v])           -- v is returned and added to trace
         with (v,t) tr = (v, t ++ tr)-- combine traces
         only v = (v, []) in         -- return only v, no other traces
     case expr of
-    (PitchClass p l) -> both $ Vp p (TrLoc l)
-    (N n l) -> both $ Vn n (TrLoc l)
-    (D d l) -> both $ Vd d (TrLoc l)
-    (B b) -> only $ Vb b
-    (UnOpExpr op e) ->
-        let (v1, t) = evalE e
-            res = evalUnOp op v1 in
-        if logIt res then with (both res) t else with (only res) t
-    (BinOpExpr op e1 e2) ->
-        let (v1, t1) = evalE e1
-            (v2, t2) = evalE e2
-            res = evalBinOp op v1 v2 in
-        if logIt res then with (both res) (t1 ++ t2) else with (only res) (t1 ++ t2)
-    (Note p o d) ->
-        let (p', tp) = evalE p
-            (o', to) = evalE o
-            (d', td) = evalE d
-            n = note p' o' d' in
-        (n, tp ++ to ++ td)
-    (Rest d) -> let (d', td) = evalE d in (rest d', td)
-    (Snippet ss) ->
-        let (vals, traces) = unzip $ map evalE ss in (snippet vals, concat traces)
-    (List ls) ->
-        let (vals, traces) = unzip $ map evalE ls in (Vlist vals, concat traces)
-    (Var s) -> let v = lookupVar env s in if logIt v then both v else only v
-    l@(Lambda _ _) -> only $ Vfunc l -- Lambda is weird
-    (App name args) ->
-        let (vargs, traces) = unzip $ map evalE args
-            res = evalApp env name vargs in
+    (PitchClass p l) -> Right $ both $ Vp p (TrLoc l)
+    (N n l) -> Right $ both $ Vn n (TrLoc l)
+    (D d l) -> Right $ both $ Vd d (TrLoc l)
+    (B b) -> Right $ only $ Vb b
+    (UnOpExpr op e) -> do
+        (v1, t) <- evalE e
+        res <- evalUnOp op v1
+        -- let (v1, t) = evalE e
+        --     res = evalUnOp op v1 in
+        return $ if logIt res then with (both res) t else with (only res) t
+    (BinOpExpr op e1 e2) -> do
+        (v1, t1) <- evalE e1
+        (v2, t2) <- evalE e2
+        res <- evalBinOp op v1 v2
+        -- let (v1, t1) = evalE e1
+        --     (v2, t2) = evalE e2
+        --     res = evalBinOp op v1 v2 in
+        return $ if logIt res then with (both res) (t1 ++ t2) else with (only res) (t1 ++ t2)
+    (Note p o d) -> do
+        (p', tp) <- evalE p
+        (o', to) <- evalE o
+        (d', td) <- evalE d
+        n <- note p' o' d'
+        -- let (p', tp) = evalE p
+        --     (o', to) = evalE o
+        --     (d', td) = evalE d
+        --     n = note p' o' d' in
+        return (n, tp ++ to ++ td)
+    (Rest d) -> do
+        (d', td) <- evalE d
+        -- let (d', td) = evalE d in (rest d', td)
+        r <- rest d'
+        return (r, td)
+    (Snippet ss) -> do
+        (vals, traces) <- unzip <$> mapM evalE ss
+        -- let (vals, traces) = unzip $ map evalE ss in (snippet vals, concat traces)
+        sn <- snippet vals
+        return (sn, concat traces)
+    (List ls) -> do
+        (vals, traces) <- unzip <$> mapM evalE ls
+        -- let (vals, traces) = unzip $ map evalE ls in (Vlist vals, concat traces)
+        return (Vlist vals, concat traces)
+    (Var s) -> do
+        v <- lookupVar env s
+        return $ if logIt v then both v else only v
+        -- let v = lookupVar env s in if logIt v then both v else only v
+    l@(Lambda _ _) -> Right $ only $ Vfunc l -- Lambda is weird
+    (App name args) -> do
+        (vargs, traces) <- unzip <$> mapM evalE args
+        res <- evalApp env name vargs
+        return (with res (concat traces))
+        -- let (vargs, traces) = unzip $ map evalE args
+        --     res = evalApp env name vargs in
         -- if is loggable, res's tracelist contains res already
-        with res (concat traces)
+        -- with res (concat traces)
     -- The traces inside If conditions are returned, but not those of the arms.
     -- TODO why? Is this acceptable? (Same for cases) (Trace-based synth doesn't
     -- care about control flow)
-    (If c t f) ->
-        let (cond, tc) = evalE c
-            res = evalE $ evalIf cond t f in
-        with res tc
-    (Case c cases) ->
-        let (cond, tc) = evalE c
-            res = evalCase env cond cases in
-        with res tc
+    (If c t f) -> do
+        (cond, tc) <- evalE c
+        res <- evalE =<< evalIf cond t f
+        return (res `with` tc)
+        -- let (cond, tc) = evalE c
+        --     res = evalE $ evalIf cond t f in
+        -- with res tc
+    (Case c cases) -> do
+        (cond, tc) <- evalE c
+        res <- evalCase env cond cases
+        return (res `with` tc)
+        -- let (cond, tc) = evalE c
+        --     res = evalCase env cond cases in
+        -- with res tc
 
 -- Below are type checking functions, used to make sure the correct Vals are
 -- used to construct notes, rests and the like.
