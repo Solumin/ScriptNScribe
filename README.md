@@ -3,6 +3,12 @@
 Author: Teddy Sudol  
 CS 691 NN, Fall 2015
 
+**CURRENT STATUS**
+
+- Better error handling in Eval, but Demo and UI are broken.
+- Basic sanity tests (`test/EvalTest.hs`) are in
+- Some tests for the standard Prelude (`test/PreludeTest.hs`) are in
+
 ## Installing
 
 Assuming you have GHC, GHCi and cabal installed:

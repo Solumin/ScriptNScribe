@@ -16,6 +16,7 @@ Parsing:
 
 Evaluation:
 - Checking prelude functions work
+- Basic simple programs?
 
 Tracing:
 - Expression traces calculated correctly.
