@@ -518,7 +518,7 @@ evalBinOp Div (Vn n1 l1) (Vn n2 l2) = Right $ Vd (fromInteger n1 / fromInteger n
 
 -- SeqOp nominally combines snippets ('linearly', that is, a :+: b means b is
 -- played after a) but we use it to add notes and things to snippets.
-evalBinOp SeqOp a b = (Vpar <$> check a <*> check b) `catchError` Left
+evalBinOp SeqOp a b = (Vseq <$> check a <*> check b) `catchError` Left
     where
     check v = case v of
         (Vnote{}) -> Right v
